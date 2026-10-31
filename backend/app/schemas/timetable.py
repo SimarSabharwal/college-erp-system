@@ -17,6 +17,8 @@ class GenerateTimetableRequest(BaseModel):
     enforce_lab_matching: bool = True
     enforce_continuity: bool = True
     max_consecutive_slots: int = 2
+    enforce_daily_lecture_cap: bool = True
+    max_lectures_per_day: int = 4  # 3, 4, or 5 lectures per day
     clear_existing_drafts: bool = True
     search_effort: str = "standard"  # 'quick', 'standard', 'thorough', 'advanced'
     weights: Optional[Dict[str, int]] = None
@@ -112,6 +114,8 @@ class TeacherAssignmentSummaryItem(BaseModel):
     eligibility_status: str  # 'Valid' or 'Needs attention'
     weekly_sessions_required: int
     session_duration_minutes: int = 55
+    credits: Optional[int] = 3
+    total_semester_lectures: Optional[int] = 45
 
 
 class ValidateMoveRequest(BaseModel):

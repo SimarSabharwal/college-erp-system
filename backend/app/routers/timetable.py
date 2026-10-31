@@ -252,6 +252,8 @@ def generate_timetable(
             enforce_lab_matching=payload.enforce_lab_matching,
             enforce_continuity=payload.enforce_continuity,
             max_consecutive_slots=payload.max_consecutive_slots,
+            enforce_daily_lecture_cap=payload.enforce_daily_lecture_cap,
+            max_lectures_per_day=payload.max_lectures_per_day,
             clear_existing_drafts=payload.clear_existing_drafts,
             search_effort=payload.search_effort,
             weights=payload.weights,

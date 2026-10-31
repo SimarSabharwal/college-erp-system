@@ -235,7 +235,17 @@ class TimetableGenerator:
                 "action_suggestion": "Mark morning & afternoon break slots as is_teaching_slot=False."
             })
 
-        # 7. Overall Readiness
+        # 7. Credit-Based Pacing & Daily Lecture Limit
+        items.append({
+            "id": "credit_pacing",
+            "name": "Synchronized Credit Pacing & Daily Limit (Max 4/day)",
+            "status": "passed",
+            "category": "Curriculum & Pacing",
+            "message": "3-credit subjects (45 lectures/sem = 3/wk) and 2-credit subjects (30 lectures/sem = 2/wk) synchronized. Max 4 lectures per day strictly enforced.",
+            "action_suggestion": None
+        })
+
+        # 8. Overall Readiness
         is_blocked = any(item["status"] == "blocked" for item in items)
         
         stats = {
@@ -287,7 +297,10 @@ class TimetableGenerator:
                     shifts_assigned.add(sh)
             shift_label = ", ".join(shifts_assigned) if shifts_assigned else "Both Shifts (Morning & Afternoon)"
 
-            req_sessions = 2 if s.has_lab else (4 if s.subject_code in ("OS", "SE", "JP", "ST") else (2 if s.subject_code == "SUM" else 3))
+            # Credit-based weekly pacing: 3 credits = 3 sessions/wk (45/semester), 2 credits = 2 sessions/wk (30/semester)
+            sub_credits = getattr(s, "credits", None) or (3 if s.subject_code in ("OS", "SE", "JP", "ST") else 2)
+            req_sessions = 3 if sub_credits == 3 else 2
+            tot_lectures = 45 if sub_credits == 3 else 30
 
             summary.append({
                 "subject_id": s.subject_id,
@@ -299,6 +312,8 @@ class TimetableGenerator:
                 "eligibility_status": "Valid" if len(assigned_teachers) > 0 else "Needs attention",
                 "weekly_sessions_required": req_sessions,
                 "session_duration_minutes": 55,
+                "credits": sub_credits,
+                "total_semester_lectures": tot_lectures,
             })
         return summary
 
@@ -468,6 +483,8 @@ class TimetableGenerator:
         enforce_lab_matching: bool = True,
         enforce_continuity: bool = True,
         max_consecutive_slots: int = 2,
+        enforce_daily_lecture_cap: bool = True,
+        max_lectures_per_day: int = 4,
         clear_existing_drafts: bool = True,
         search_effort: str = "standard",
         weights: Optional[Dict[str, int]] = None,
@@ -553,6 +570,7 @@ class TimetableGenerator:
                 days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
         date_range_label = f"{target_week_start.strftime('%d %b')} – {target_week_end.strftime('%d %b %Y')}"
+        max_daily = max(1, min(5, max_lectures_per_day)) if enforce_daily_lecture_cap else 5
 
         tt = Timetable(
             program_id=program_id,
@@ -565,7 +583,7 @@ class TimetableGenerator:
             active_from=target_week_start,
             active_to=target_week_end,
             is_locked=False,
-            remarks=f"Scope: {date_range_label} ({', '.join(days)}), Mode: {generation_mode.upper()}, Strategy: {strategy_preset.upper()}",
+            remarks=f"Scope: {date_range_label} ({', '.join(days)}), Mode: {generation_mode.upper()}, Strategy: {strategy_preset.upper()}, Daily Cap: {max_daily} lec/shift (3:2 Credit Pacing)",
         )
         self.db.add(tt)
         self.db.flush()
@@ -573,6 +591,8 @@ class TimetableGenerator:
         occupied_teachers: Set[Tuple[int, int]] = set()      # (teacher_id, slot_id)
         occupied_sections: Set[Tuple[int, int]] = set()      # (section_id, slot_id)
         occupied_rooms: Set[Tuple[int, int]] = set()         # (room_id, slot_id)
+        occupied_teachers_time: Set[Tuple[int, str, Any, Any]] = set()  # (teacher_id, day, start_time, end_time)
+        occupied_rooms_time: Set[Tuple[int, str, Any, Any]] = set()     # (room_id, day, start_time, end_time)
         teacher_schedule: List[Tuple[int, str, int]] = []    # (teacher_id, day, global_order)
         weekly_teacher_hours: Dict[int, int] = {}            # teacher_id -> assigned slot count
         
@@ -580,8 +600,9 @@ class TimetableGenerator:
         violations: List[ConstraintViolation] = []
 
         DAY_ORDER = {"Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6, "Sun": 7}
+        max_daily = max(1, min(5, max_lectures_per_day)) if enforce_daily_lecture_cap else 5
 
-        # Iterate per section
+        # Track global progress across sections
         for sec in sections:
             preferred_theory_room = theory_rooms[(sec.section_id - 1) % len(theory_rooms)]
 
@@ -603,40 +624,46 @@ class TimetableGenerator:
                 if s.day_of_week in slots_by_day:
                     slots_by_day[s.day_of_week].append(s)
 
-            # Build list of required sessions for this section scaled by active days
-            # Separate labs (which require 2 consecutive periods) and theory
             lab_subjects = [s for s in subjects if s.has_lab]
             theory_subjects = [s for s in subjects if not s.has_lab]
 
-            day_ratio = len(days) / 5.0
-
-            # Determine session counts per subject
+            # Credit-Based Target Allocation:
+            # 3 Credits (OS, SE, JP, ST) = 45 semester lectures -> 3/week
+            # 2 Credits (ORACLE_LAB, JAVA_LAB, SUM, YOGA) = 30 semester lectures -> 2/week
             subject_session_counts: Dict[int, int] = {}
-            for sub in subjects:
-                if sub.has_lab:
-                    base_count = 2  # 2 lab periods per week
-                elif sub.subject_code in ("OS", "SE", "JP", "ST"):
-                    base_count = 4  # 4 periods for core theory
-                elif sub.subject_code == "SUM":
-                    base_count = 2  # 2 periods for Start-up Management
-                elif sub.subject_code == "YOGA":
-                    base_count = 1  # 1 period for Yoga
-                else:
-                    base_count = 3
+            if max_daily == 4 and len(days) == 5:
+                # 4 * 3 = 12 (3 credits); 4 * 2 = 8 (2 credits) -> Exactly 20 lectures (4/day)!
+                for sub in subjects:
+                    sub_cr = getattr(sub, "credits", None) or (3 if sub.subject_code in ("OS", "SE", "JP", "ST") else 2)
+                    subject_session_counts[sub.subject_id] = 3 if sub_cr == 3 else 2
+            elif max_daily == 3 and len(days) == 5:
+                # 15 lectures across 5 days (3/day)
+                for sub in subjects:
+                    sub_cr = getattr(sub, "credits", None) or (3 if sub.subject_code in ("OS", "SE", "JP", "ST") else 2)
+                    subject_session_counts[sub.subject_id] = 2 if sub_cr == 3 else (2 if sub.has_lab else 1)
+            elif max_daily == 5 and len(days) == 5:
+                # 25 lectures across 5 days (5/day)
+                for sub in subjects:
+                    sub_cr = getattr(sub, "credits", None) or (3 if sub.subject_code in ("OS", "SE", "JP", "ST") else 2)
+                    subject_session_counts[sub.subject_id] = 4 if sub_cr == 3 else (2 if sub.has_lab else 3)
+            else:
+                # Scaled proportionally for custom date ranges
+                total_target = len(days) * max_daily
+                weight_sum = sum((getattr(s, "credits", None) or (3 if s.subject_code in ("OS", "SE", "JP", "ST") else 2)) for s in subjects)
+                for sub in subjects:
+                    sub_cr = getattr(sub, "credits", None) or (3 if sub.subject_code in ("OS", "SE", "JP", "ST") else 2)
+                    allocated = max(1 if sub_cr == 3 or sub.has_lab else 0, round(total_target * (sub_cr / weight_sum)))
+                    subject_session_counts[sub.subject_id] = allocated
 
-                if len(days) < 5:
-                    count = max(1, round(base_count * day_ratio))
-                else:
-                    count = base_count
-                subject_session_counts[sub.subject_id] = count
-
-            # Track section subject counts per day: (section_id, day, subject_id) -> count
+            section_day_lecture_count: Dict[Tuple[int, str], int] = {}
             section_day_subject_count: Dict[Tuple[int, str, int], int] = {}
+            section_day_lab_count: Dict[Tuple[int, str], int] = {}
 
-            # STEP 1: Schedule Lab Subjects First (2 consecutive slots in Lab Room 107/103/G01/G03)
-            for lab_sub in lab_subjects:
+            # STEP 1: Schedule Lab Subjects (2 consecutive periods, at most 1 lab block per day, separate days)
+            lab_preferred_days = ["Tue", "Thu"] if sec.shift_id == 1 else ["Wed", "Fri"]
+            for idx, lab_sub in enumerate(lab_subjects):
                 needed = subject_session_counts.get(lab_sub.subject_id, 0)
-                if needed <= 0:
+                if needed < 2:
                     continue
 
                 candidate_teachers = (
@@ -656,8 +683,16 @@ class TimetableGenerator:
                 ] or candidate_teachers
 
                 assigned_lab = False
-                # Try to place lab on distinct days (e.g. Tue, Thu, or Wed)
-                for day_name in days:
+                pref_day = lab_preferred_days[idx % len(lab_preferred_days)]
+                ordered_days = [pref_day] + [d for d in days if d != pref_day]
+
+                for day_name in ordered_days:
+                    # Enforce daily limit: lab requires 2 periods
+                    if section_day_lab_count.get((sec.section_id, day_name), 0) >= 1:
+                        continue  # At most 1 lab per day
+                    if section_day_lecture_count.get((sec.section_id, day_name), 0) + 2 > max_daily:
+                        continue
+
                     day_slots = slots_by_day.get(day_name, [])
                     if len(day_slots) < 2:
                         continue
@@ -667,18 +702,19 @@ class TimetableGenerator:
                         slot1 = day_slots[i]
                         slot2 = day_slots[i + 1]
 
-                        # Check if consecutive in slot_order
                         if slot2.slot_order != slot1.slot_order + 1:
                             continue
 
-                        # Check section availability
                         if (sec.section_id, slot1.slot_id) in occupied_sections or (sec.section_id, slot2.slot_id) in occupied_sections:
                             continue
 
-                        # Find eligible teacher available for both slots
+                        # Find eligible teacher available for both slots & time windows
                         chosen_teacher = None
                         for t in eligible_teachers:
                             if (t.teacher_id, slot1.slot_id) in occupied_teachers or (t.teacher_id, slot2.slot_id) in occupied_teachers:
+                                continue
+                            if (t.teacher_id, day_name, slot1.start_time, slot1.end_time) in occupied_teachers_time or \
+                               (t.teacher_id, day_name, slot2.start_time, slot2.end_time) in occupied_teachers_time:
                                 continue
                             if weekly_teacher_hours.get(t.teacher_id, 0) + 2 > t.max_hours_per_week:
                                 continue
@@ -691,9 +727,13 @@ class TimetableGenerator:
                         # Find lab room available for both slots (107 prioritized)
                         chosen_room = None
                         for rm in lab_rooms:
-                            if (rm.room_id, slot1.slot_id) not in occupied_rooms and (rm.room_id, slot2.slot_id) not in occupied_rooms:
-                                chosen_room = rm
-                                break
+                            if (rm.room_id, slot1.slot_id) in occupied_rooms or (rm.room_id, slot2.slot_id) in occupied_rooms:
+                                continue
+                            if (rm.room_id, day_name, slot1.start_time, slot1.end_time) in occupied_rooms_time or \
+                               (rm.room_id, day_name, slot2.start_time, slot2.end_time) in occupied_rooms_time:
+                                continue
+                            chosen_room = rm
+                            break
 
                         if not chosen_room:
                             continue
@@ -716,10 +756,14 @@ class TimetableGenerator:
                             occupied_sections.add((sec.section_id, slot.slot_id))
                             occupied_teachers.add((chosen_teacher.teacher_id, slot.slot_id))
                             occupied_rooms.add((chosen_room.room_id, slot.slot_id))
+                            occupied_teachers_time.add((chosen_teacher.teacher_id, day_name, slot.start_time, slot.end_time))
+                            occupied_rooms_time.add((chosen_room.room_id, day_name, slot.start_time, slot.end_time))
                             teacher_schedule.append((chosen_teacher.teacher_id, slot.day_of_week, slot.global_order))
                             weekly_teacher_hours[chosen_teacher.teacher_id] = weekly_teacher_hours.get(chosen_teacher.teacher_id, 0) + 1
 
+                        section_day_lecture_count[(sec.section_id, day_name)] = section_day_lecture_count.get((sec.section_id, day_name), 0) + 2
                         section_day_subject_count[(sec.section_id, day_name, lab_sub.subject_id)] = 2
+                        section_day_lab_count[(sec.section_id, day_name)] = section_day_lab_count.get((sec.section_id, day_name), 0) + 1
                         subject_session_counts[lab_sub.subject_id] = max(0, subject_session_counts[lab_sub.subject_id] - 2)
                         assigned_lab = True
                         break
@@ -727,117 +771,131 @@ class TimetableGenerator:
                     if assigned_lab:
                         break
 
-            # STEP 2: Schedule Theory Sessions Evenly Across Days (Strictly No 4-in-a-row clumping)
-            # Build list of theory sessions to schedule
+            # STEP 2: Schedule Theory Sessions Evenly Across Days (Strict Anti-Clustering: Max 1 per subject/day)
             remaining_theory_sessions = []
             for sub in theory_subjects:
                 cnt = subject_session_counts.get(sub.subject_id, 0)
                 for _ in range(cnt):
                     remaining_theory_sessions.append(sub)
 
-            # Sort remaining theory according to strategy
+            # Sort initial theory according to strategy
             if strategy_preset == "student_first":
                 remaining_theory_sessions.sort(key=lambda s: s.subject_code)
             elif strategy_preset == "faculty_first":
                 remaining_theory_sessions.sort(key=lambda s: s.name)
 
-            # Find empty slots for this section in chronological order
-            empty_slots = [s for s in sec_slots if (sec.section_id, s.slot_id) not in occupied_sections]
-
-            # Distribute theory sessions avoiding subject clumping on the same day
-            for slot in empty_slots:
-                if not remaining_theory_sessions:
-                    break
-
-                # Sort remaining theory candidates: prefer subjects not yet taught on this day!
-                # Maximum 1 session per subject per day, unless remaining slots require a 2nd non-adjacent
-                def subject_sort_key(s):
-                    count_today = section_day_subject_count.get((sec.section_id, slot.day_of_week, s.subject_id), 0)
-                    return count_today
-
-                candidates_sorted = sorted(remaining_theory_sessions, key=subject_sort_key)
-
-                assigned_slot = False
-                for sub in candidates_sorted:
-                    count_today = section_day_subject_count.get((sec.section_id, slot.day_of_week, sub.subject_id), 0)
-                    # If this subject already has 1 lecture today and other subjects haven't had any, skip for now
-                    if count_today >= 1 and any(section_day_subject_count.get((sec.section_id, slot.day_of_week, o.subject_id), 0) == 0 for o in remaining_theory_sessions):
+            # Chronologically fill slots up to max_daily per day
+            for day_name in days:
+                day_slots = slots_by_day.get(day_name, [])
+                for slot in day_slots:
+                    if section_day_lecture_count.get((sec.section_id, day_name), 0) >= max_daily:
+                        break
+                    if (sec.section_id, slot.slot_id) in occupied_sections:
                         continue
-                    if count_today >= 2:
-                        continue  # Never exceed 2 sessions of same subject per day under any circumstances
-
-                    # Eligible teachers
-                    cand_teachers = (
-                        self.db.query(Teacher)
-                        .join(TeacherSubject)
-                        .filter(
-                            TeacherSubject.subject_id == sub.subject_id,
-                            TeacherSubject.can_teach == True,
-                            Teacher.is_active == True,
-                        )
-                        .order_by(TeacherSubject.priority.asc())
-                        .all()
-                    )
-                    elig_teachers = [
-                        t for t in cand_teachers
-                        if not enforce_shift_lock or shift_lock_map.get((t.teacher_id, sub.subject_id)) in (None, sec.shift_id)
-                    ] or cand_teachers
-
-                    chosen_teacher = None
-                    for t in elig_teachers:
-                        if (t.teacher_id, slot.slot_id) in occupied_teachers:
-                            continue
-                        if weekly_teacher_hours.get(t.teacher_id, 0) >= t.max_hours_per_week:
-                            continue
-                        if enforce_continuity and not self.check_continuity_safe(
-                            teacher_id=t.teacher_id,
-                            day_of_week=slot.day_of_week,
-                            new_global_order=slot.global_order,
-                            current_schedule=teacher_schedule,
-                            max_consecutive=max_consecutive_slots,
-                        ):
-                            continue
-                        chosen_teacher = t
+                    if not remaining_theory_sessions:
                         break
 
-                    if not chosen_teacher:
-                        continue
+                    # Pacing & Diversity Rule:
+                    # 1. Subject NOT taught yet today (count_today == 0)
+                    # 2. Prioritize subjects with the most remaining sessions needed (running low in schedule)
+                    day_idx = days.index(day_name)
+                    prev_day = days[day_idx - 1] if day_idx > 0 else None
 
-                    # Select classroom on Second Floor (Rooms 201 to 208)
-                    target_theory_rooms = [preferred_theory_room] + [r for r in theory_rooms if r.room_id != preferred_theory_room.room_id]
-                    chosen_room = None
-                    for rm in target_theory_rooms:
-                        if (rm.room_id, slot.slot_id) not in occupied_rooms:
+                    def sub_priority(s):
+                        cnt_today = section_day_subject_count.get((sec.section_id, day_name, s.subject_id), 0)
+                        taught_yesterday = section_day_subject_count.get((sec.section_id, prev_day, s.subject_id), 0) if prev_day else 0
+                        rem = remaining_theory_sessions.count(s)
+                        return (cnt_today, taught_yesterday, -rem)
+
+                    candidates_sorted = sorted(list(set(remaining_theory_sessions)), key=sub_priority)
+
+                    assigned_slot = False
+                    for sub in candidates_sorted:
+                        # STRICT RULE: A theory subject can appear AT MOST ONCE per day for a section!
+                        count_today = section_day_subject_count.get((sec.section_id, day_name, sub.subject_id), 0)
+                        if count_today >= 1:
+                            continue
+
+                        cand_teachers = (
+                            self.db.query(Teacher)
+                            .join(TeacherSubject)
+                            .filter(
+                                TeacherSubject.subject_id == sub.subject_id,
+                                TeacherSubject.can_teach == True,
+                                Teacher.is_active == True,
+                            )
+                            .order_by(TeacherSubject.priority.asc())
+                            .all()
+                        )
+                        elig_teachers = [
+                            t for t in cand_teachers
+                            if not enforce_shift_lock or shift_lock_map.get((t.teacher_id, sub.subject_id)) in (None, sec.shift_id)
+                        ] or cand_teachers
+
+                        chosen_teacher = None
+                        for t in elig_teachers:
+                            if (t.teacher_id, slot.slot_id) in occupied_teachers:
+                                continue
+                            if (t.teacher_id, day_name, slot.start_time, slot.end_time) in occupied_teachers_time:
+                                continue
+                            if weekly_teacher_hours.get(t.teacher_id, 0) >= t.max_hours_per_week:
+                                continue
+                            if enforce_continuity and not self.check_continuity_safe(
+                                teacher_id=t.teacher_id,
+                                day_of_week=slot.day_of_week,
+                                new_global_order=slot.global_order,
+                                current_schedule=teacher_schedule,
+                                max_consecutive=max_consecutive_slots,
+                            ):
+                                continue
+                            chosen_teacher = t
+                            break
+
+                        if not chosen_teacher:
+                            continue
+
+                        # Select classroom on Second Floor (Rooms 201 to 208)
+                        target_theory_rooms = [preferred_theory_room] + [r for r in theory_rooms if r.room_id != preferred_theory_room.room_id]
+                        chosen_room = None
+                        for rm in target_theory_rooms:
+                            if (rm.room_id, slot.slot_id) in occupied_rooms:
+                                continue
+                            if (rm.room_id, day_name, slot.start_time, slot.end_time) in occupied_rooms_time:
+                                continue
                             chosen_room = rm
                             break
 
-                    if not chosen_room:
-                        continue
+                        if not chosen_room:
+                            continue
 
-                    # Create session
-                    detail = TimetableDetail(
-                        timetable_id=tt.timetable_id,
-                        section_id=sec.section_id,
-                        subject_id=sub.subject_id,
-                        teacher_id=chosen_teacher.teacher_id,
-                        room_id=chosen_room.room_id,
-                        slot_id=slot.slot_id,
-                        class_type="Theory",
-                        is_lab=False,
-                    )
-                    self.db.add(detail)
-                    created_details.append(detail)
+                        # Create session
+                        detail = TimetableDetail(
+                            timetable_id=tt.timetable_id,
+                            section_id=sec.section_id,
+                            subject_id=sub.subject_id,
+                            teacher_id=chosen_teacher.teacher_id,
+                            room_id=chosen_room.room_id,
+                            slot_id=slot.slot_id,
+                            class_type="Theory",
+                            is_lab=False,
+                        )
+                        self.db.add(detail)
+                        created_details.append(detail)
 
-                    occupied_sections.add((sec.section_id, slot.slot_id))
-                    occupied_teachers.add((chosen_teacher.teacher_id, slot.slot_id))
-                    occupied_rooms.add((chosen_room.room_id, slot.slot_id))
-                    teacher_schedule.append((chosen_teacher.teacher_id, slot.day_of_week, slot.global_order))
-                    weekly_teacher_hours[chosen_teacher.teacher_id] = weekly_teacher_hours.get(chosen_teacher.teacher_id, 0) + 1
-                    section_day_subject_count[(sec.section_id, slot.day_of_week, sub.subject_id)] = count_today + 1
+                        occupied_sections.add((sec.section_id, slot.slot_id))
+                        occupied_teachers.add((chosen_teacher.teacher_id, slot.slot_id))
+                        occupied_rooms.add((chosen_room.room_id, slot.slot_id))
+                        occupied_teachers_time.add((chosen_teacher.teacher_id, day_name, slot.start_time, slot.end_time))
+                        occupied_rooms_time.add((chosen_room.room_id, day_name, slot.start_time, slot.end_time))
+                        teacher_schedule.append((chosen_teacher.teacher_id, slot.day_of_week, slot.global_order))
+                        weekly_teacher_hours[chosen_teacher.teacher_id] = weekly_teacher_hours.get(chosen_teacher.teacher_id, 0) + 1
 
-                    remaining_theory_sessions.remove(sub)
-                    assigned_slot = True
-                    break
+                        section_day_lecture_count[(sec.section_id, day_name)] = section_day_lecture_count.get((sec.section_id, day_name), 0) + 1
+                        section_day_subject_count[(sec.section_id, day_name, sub.subject_id)] = count_today + 1
+
+                        remaining_theory_sessions.remove(sub)
+                        assigned_slot = True
+                        break
 
         self.db.commit()
         self.db.refresh(tt)

@@ -69,6 +69,8 @@ interface TeacherAssignmentSummary {
   eligibility_status: string;
   weekly_sessions_required: number;
   session_duration_minutes: number;
+  credits?: number;
+  total_semester_lectures?: number;
 }
 
 interface ReadinessItem {
@@ -252,6 +254,9 @@ export const TimetableStudio: React.FC = () => {
   const [enforceLabMatching, setEnforceLabMatching] = useState<boolean>(true);
   const [enforceContinuity, setEnforceContinuity] = useState<boolean>(true);
   const [maxConsecutiveSlots, setMaxConsecutiveSlots] = useState<number>(2);
+  // Checkbox 5: Daily Shift Lecture Cap & Synchronized Credit Pacing (C-10)
+  const [enforceDailyLectureCap, setEnforceDailyLectureCap] = useState<boolean>(true);
+  const [maxLecturesPerDay, setMaxLecturesPerDay] = useState<number>(4); // 3, 4, or 5
   const [strategyPreset, setStrategyPreset] = useState<string>("balanced");
   const searchEffort = "standard";
   const clearExistingDrafts = true;
@@ -272,6 +277,7 @@ export const TimetableStudio: React.FC = () => {
     rooms: true,
     academic: false,
     breaks: false,
+    pacing: true,
     preferences: true,
   });
 
@@ -440,6 +446,8 @@ export const TimetableStudio: React.FC = () => {
         enforce_lab_matching: enforceLabMatching,
         enforce_continuity: enforceContinuity,
         max_consecutive_slots: maxConsecutiveSlots,
+        enforce_daily_lecture_cap: enforceDailyLectureCap,
+        max_lectures_per_day: maxLecturesPerDay,
         clear_existing_drafts: clearExistingDrafts,
         search_effort: searchEffort,
       });
@@ -1049,11 +1057,20 @@ export const TimetableStudio: React.FC = () => {
                       : formatDisplayDate(startDate)}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 text-blue-900 font-semibold text-[11px]">
-                  <span>Active Days:</span>
-                  <span className="font-bold text-blue-700">
-                    {getActiveDaysSummary().join(", ")} ({getActiveDaysSummary().length} days)
-                  </span>
+                <div className="flex items-center gap-3 text-blue-900 font-semibold text-[11px]">
+                  <div>
+                    <span>Active Days:</span>{" "}
+                    <span className="font-bold text-blue-700">
+                      {getActiveDaysSummary().join(", ")} ({getActiveDaysSummary().length} days)
+                    </span>
+                  </div>
+                  <span className="text-blue-300">|</span>
+                  <div>
+                    <span>Daily Shift Limit:</span>{" "}
+                    <span className="font-bold text-blue-700">
+                      {enforceDailyLectureCap ? `${maxLecturesPerDay} lectures / day` : "Standard (5)"}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1161,50 +1178,69 @@ export const TimetableStudio: React.FC = () => {
                   <thead className="bg-slate-50/40 text-slate-500 font-semibold border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-2.5">Subject</th>
+                      <th className="px-4 py-2.5">Credits & Quota</th>
                       <th className="px-4 py-2.5">Assigned Faculty</th>
                       <th className="px-4 py-2.5">Shift Eligibility</th>
-                      <th className="px-4 py-2.5">Weekly Sessions</th>
+                      <th className="px-4 py-2.5">Weekly Pacing</th>
                       <th className="px-4 py-2.5">Room Policy</th>
                       <th className="px-4 py-2.5">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {teacherSummary.map((sub) => (
-                      <tr key={sub.subject_id} className="hover:bg-slate-50/60 transition">
-                        <td className="px-4 py-2.5 font-bold text-slate-800">
-                          {sub.subject_name}{" "}
-                          <span
-                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                              sub.is_lab
-                                ? "bg-purple-100 text-purple-700 border border-purple-200"
-                                : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {sub.subject_code}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 font-medium">
-                          {sub.assigned_teachers.join(", ")}
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-600">{sub.shift}</td>
-                        <td className="px-4 py-2.5 font-semibold text-slate-800">
-                          {sub.weekly_sessions_required} periods / week (55m each)
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-600">
-                          {sub.is_lab ? (
-                            <span className="text-purple-700 font-semibold">Lab: 107 (Priority) / 103 / G01 / G03</span>
-                          ) : (
-                            <span className="text-blue-700 font-semibold">Theory: Floor 2 (201–208)</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                            <Check className="w-3 h-3" />
-                            <span>{sub.eligibility_status}</span>
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {teacherSummary.map((sub) => {
+                      const is3Credits = sub.credits === 3 || ["OS", "SE", "JP", "ST"].includes(sub.subject_code);
+                      const displayCredits = sub.credits || (is3Credits ? 3 : 2);
+                      const displayQuota = sub.total_semester_lectures || (is3Credits ? 45 : 30);
+
+                      return (
+                        <tr key={sub.subject_id} className="hover:bg-slate-50/60 transition">
+                          <td className="px-4 py-2.5 font-bold text-slate-800">
+                            {sub.subject_name}{" "}
+                            <span
+                              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                sub.is_lab
+                                  ? "bg-purple-100 text-purple-700 border border-purple-200"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {sub.subject_code}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                                is3Credits ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {displayCredits} Credits
+                            </span>
+                            <span className="block text-[10px] text-slate-400 mt-0.5">
+                              {displayQuota} lectures / sem
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 font-medium">
+                            {sub.assigned_teachers.join(", ")}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">{sub.shift}</td>
+                          <td className="px-4 py-2.5 font-semibold text-slate-800">
+                            {sub.weekly_sessions_required} periods / wk (55m)
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {sub.is_lab ? (
+                              <span className="text-purple-700 font-semibold">Lab: 107 (Priority) / 103 / G01 / G03</span>
+                            ) : (
+                              <span className="text-blue-700 font-semibold">Theory: Floor 2 (201–208)</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              <Check className="w-3 h-3" />
+                              <span>{sub.eligibility_status}</span>
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1448,6 +1484,139 @@ export const TimetableStudio: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Category D: Daily Shift Lecture Cap & Synchronized Credit Pacing (C-10) */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => toggleCategory("pacing")}
+                  className="w-full px-5 py-3.5 bg-slate-50/60 hover:bg-slate-50 transition flex items-center justify-between cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-bold text-slate-800">4. Daily Shift Lecture Cap & Credit Pacing (C-10)</span>
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                      Special Clause · Max {maxLecturesPerDay} Lectures / Shift
+                    </span>
+                  </div>
+                  {expandedCategories.pacing ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                </button>
+                {expandedCategories.pacing && (
+                  <div className="p-5 border-t border-slate-100 space-y-4 text-xs">
+                    {/* The 5th Checkbox (Special Clause) */}
+                    <label className="flex items-start gap-3 p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 hover:border-blue-300 transition cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enforceDailyLectureCap}
+                        onChange={(e) => setEnforceDailyLectureCap(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-slate-900">
+                            Enforce Daily Shift Lecture Cap & Synchronized Credit Pacing (C-10) · Hard Constraint
+                          </p>
+                          <span className="text-[9px] font-extrabold uppercase bg-blue-600 text-white px-1.5 py-0.2 rounded">
+                            Special Clause
+                          </span>
+                        </div>
+                        <p className="text-slate-600 text-[11px] mt-1 leading-relaxed">
+                          Caps teaching lectures per section to strictly <strong>{maxLecturesPerDay} lectures per day</strong>. Under no circumstance will any section receive more than this number of lectures in any shift. Automatically harmonizes 3-credit subjects (45 semester lectures = 3/wk) with 2-credit subjects (30 semester lectures = 2/wk) so that 2-credit subjects never exhaust early while 3-credit subjects lag behind.
+                        </p>
+                      </div>
+                    </label>
+
+                    {/* Quantity Selector: 3, 4, 5 */}
+                    <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="font-bold text-slate-800 text-xs">
+                            Lectures to Assign in this Shift
+                          </label>
+                          <p className="text-[11px] text-slate-500">
+                            Choose daily limit: 3, 4 (Recommended), or 5 lectures per day
+                          </p>
+                        </div>
+                        <span className="text-xs font-extrabold px-2.5 py-1 bg-white border border-slate-200 text-blue-700 rounded-lg shadow-2xs">
+                          {maxLecturesPerDay} Lectures / Day Active
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {[
+                          {
+                            val: 3,
+                            title: "3 Lectures",
+                            periodLabel: "15 periods / week",
+                            badge: "Relaxed Load",
+                            badgeColor: "bg-slate-100 text-slate-600",
+                            desc: "Maximum 3 teaching lectures daily. Leaves 2 free slots per shift for self-study and student club activities.",
+                          },
+                          {
+                            val: 4,
+                            title: "4 Lectures",
+                            periodLabel: "20 periods / week",
+                            badge: "Recommended Standard",
+                            badgeColor: "bg-emerald-100 text-emerald-800 border border-emerald-200",
+                            desc: "Strictly 4 lectures daily. Exactly matches 4x3-credit (12) + 4x2-credit (8) = 20 periods, ensuring flawless 3:2 pacing.",
+                          },
+                          {
+                            val: 5,
+                            title: "5 Lectures",
+                            periodLabel: "25 periods / week",
+                            badge: "Full Shift",
+                            badgeColor: "bg-amber-100 text-amber-800",
+                            desc: "Fills all 5 teaching periods daily across the shift with maximum instructional throughput.",
+                          },
+                        ].map((opt) => (
+                          <button
+                            key={opt.val}
+                            type="button"
+                            onClick={() => setMaxLecturesPerDay(opt.val)}
+                            className={`p-3.5 rounded-xl border text-left transition cursor-pointer relative ${
+                              maxLecturesPerDay === opt.val
+                                ? "bg-white border-blue-500 text-blue-950 shadow-xs ring-2 ring-blue-500/20"
+                                : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-extrabold text-xs">{opt.title}</span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${opt.badgeColor}`}>
+                                {opt.badge}
+                              </span>
+                            </div>
+                            <span className="text-[11px] font-semibold text-blue-600 block">{opt.periodLabel}</span>
+                            <p className="text-[10px] text-slate-500 mt-1.5 leading-snug">{opt.desc}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Anti-Clustering & Low-Subject Prioritization Guarantees */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1 shadow-2xs">
+                        <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Anti-Clustering Single-Session Rule</span>
+                        </p>
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          A theory subject is restricted to at most <strong>1 lecture per day</strong> for any section. Never crowds duplicate theory lectures of the same subject on the same day.
+                        </p>
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1 shadow-2xs">
+                        <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Low-Running Subject Prioritization</span>
+                        </p>
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          The generator balances daily subject variety, prioritizing subjects that are running low so 2-credit subjects don't exhaust early while 3-credit subjects lag behind.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Stage 3 Footer Navigation */}
@@ -1598,7 +1767,7 @@ export const TimetableStudio: React.FC = () => {
                   <p className="text-[11px] text-blue-800">
                     {dateSelectionMode === "range"
                       ? `${getDayCount(startDate, endDate)} active days (${getActiveDaysSummary().join(", ")})`
-                      : `Single-day schedule (${getActiveDaysSummary().join(", ")})`} · Automatic CSP generation for selected dates
+                      : `Single-day schedule (${getActiveDaysSummary().join(", ")})`} · Daily Cap: {enforceDailyLectureCap ? `${maxLecturesPerDay} lectures / shift (3:2 Credit Pacing)` : "Uncapped"}
                   </p>
                 </div>
               </div>
