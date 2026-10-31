@@ -55,3 +55,46 @@ class RecentActivityItem(BaseModel):
     description: str
     category: str  # 'Timetable', 'Admission', 'Leave', 'Transfer', 'System'
     timestamp_str: str
+
+
+class RoomSlotAllocation(BaseModel):
+    slot_id: int
+    slot_order: int
+    start_time: str
+    end_time: str
+    is_teaching_slot: bool
+    status: str  # 'Available' or 'Occupied' or 'Break'
+    subject_name: Optional[str] = None
+    subject_code: Optional[str] = None
+    teacher_name: Optional[str] = None
+    section_name: Optional[str] = None
+
+
+class RoomPeriodAvailabilityItem(BaseModel):
+    room_id: int
+    room_code: str
+    room_type: str
+    capacity: int
+    floor: Optional[str] = None
+    is_primary_lab: bool = False
+    slots: List[RoomSlotAllocation]
+
+
+class DayPeriodHeader(BaseModel):
+    slot_id: int
+    slot_order: int
+    start_time: str
+    end_time: str
+    time_label: str
+    is_teaching_slot: bool
+
+
+class RoomDayPeriodsResponse(BaseModel):
+    day: str
+    target_date: str
+    shift_name: str
+    period_headers: List[DayPeriodHeader]
+    rooms: List[RoomPeriodAvailabilityItem]
+    total_rooms: int
+    available_rooms_count: int
+    occupied_rooms_count: int

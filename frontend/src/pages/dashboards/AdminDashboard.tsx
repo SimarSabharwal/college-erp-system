@@ -11,6 +11,8 @@ import {
   Activity,
   Info,
   Building,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { TimetableStudio } from "../../components/timetable/TimetableStudio";
 
@@ -76,28 +78,55 @@ interface AffectedSessionWithCandidates {
   candidates: CandidateSubstitute[];
 }
 
-interface RoomDayStatus {
-  day: string;
-  date_str: string;
-  status: string;
-  sessions_count?: number;
-  session_details?: string[];
-}
-
-interface RoomAvailabilityItem {
-  room_code: string;
-  room_type: string;
-  floor?: string;
-  is_primary_lab?: boolean;
-  days: RoomDayStatus[];
-}
-
 interface ActivityItem {
   id: number;
   title: string;
   description: string;
   category: string;
   timestamp_str: string;
+}
+
+interface RoomSlotAllocation {
+  slot_id: number;
+  slot_order: number;
+  start_time: string;
+  end_time: string;
+  is_teaching_slot: boolean;
+  status: "Available" | "Occupied" | "Break";
+  subject_name?: string | null;
+  subject_code?: string | null;
+  teacher_name?: string | null;
+  section_name?: string | null;
+}
+
+interface RoomPeriodAvailabilityItem {
+  room_id: number;
+  room_code: string;
+  room_type: string;
+  capacity: number;
+  floor?: string;
+  is_primary_lab?: boolean;
+  slots: RoomSlotAllocation[];
+}
+
+interface DayPeriodHeader {
+  slot_id: number;
+  slot_order: number;
+  start_time: string;
+  end_time: string;
+  time_label: string;
+  is_teaching_slot: boolean;
+}
+
+interface RoomDayPeriodsResponse {
+  day: string;
+  target_date: string;
+  shift_name: string;
+  period_headers: DayPeriodHeader[];
+  rooms: RoomPeriodAvailabilityItem[];
+  total_rooms: number;
+  available_rooms_count: number;
+  occupied_rooms_count: number;
 }
 
 export const AdminDashboard: React.FC = () => {
@@ -124,16 +153,49 @@ export const AdminDashboard: React.FC = () => {
   const [adminNote, setAdminNote] = useState<string>("");
   const [submittingDecision, setSubmittingDecision] = useState<boolean>(false);
 
-  // Room Heatmap & Activity State
-  const [rooms, setRooms] = useState<RoomAvailabilityItem[]>([]);
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  // Day-Wise Room Availability Across Periods State
+  const [selectedDay, setSelectedDay] = useState<"Mon" | "Tue" | "Wed" | "Thu" | "Fri">("Mon");
+  const [selectedShiftId, setSelectedShiftId] = useState<number>(1); // 1 = Morning (09:10-14:15), 2 = Afternoon
   const [roomCategory, setRoomCategory] = useState<"active" | "labs" | "floor2" | "all">("active");
+  const [roomDayData, setRoomDayData] = useState<RoomDayPeriodsResponse | null>(null);
+  const [loadingRooms, setLoadingRooms] = useState<boolean>(true);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
 
-  useEffect(() => {
-    fetchStats();
-    fetchLeaves();
-    fetchReports();
-  }, []);
+  const academicDays: Array<{ day: "Mon" | "Tue" | "Wed" | "Thu" | "Fri"; label: string; date: string }> = [
+    { day: "Mon", label: "Monday", date: "02 Nov" },
+    { day: "Tue", label: "Tuesday", date: "03 Nov" },
+    { day: "Wed", label: "Wednesday", date: "04 Nov" },
+    { day: "Thu", label: "Thursday", date: "05 Nov" },
+    { day: "Fri", label: "Friday", date: "06 Nov" },
+  ];
+
+  const currentDayIndex = academicDays.findIndex((d) => d.day === selectedDay);
+
+  const cyclePrevDay = () => {
+    const nextIdx = (currentDayIndex - 1 + academicDays.length) % academicDays.length;
+    setSelectedDay(academicDays[nextIdx].day);
+  };
+
+  const cycleNextDay = () => {
+    const nextIdx = (currentDayIndex + 1) % academicDays.length;
+    setSelectedDay(academicDays[nextIdx].day);
+  };
+
+  const fetchRoomSlots = async (
+    day: string = selectedDay,
+    cat: string = roomCategory,
+    shift: number = selectedShiftId
+  ) => {
+    try {
+      setLoadingRooms(true);
+      const res = await api.get(`/reports/admin/room-day-slots?day=${day}&category=${cat}&shift_id=${shift}`);
+      setRoomDayData(res.data);
+    } catch (err) {
+      console.error("Failed to load room day slots", err);
+    } finally {
+      setLoadingRooms(false);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -153,22 +215,27 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const fetchReports = async (cat: string = roomCategory) => {
+  const fetchActivities = async () => {
     try {
-      const [roomsRes, actRes] = await Promise.all([
-        api.get(`/reports/admin/room-availability?category=${cat}`),
-        api.get("/reports/recent-activity"),
-      ]);
-      setRooms(roomsRes.data);
-      setActivities(actRes.data);
+      const res = await api.get("/reports/recent-activity");
+      setActivities(res.data);
     } catch (err) {
-      console.error("Failed to load reports", err);
+      console.error("Failed to load recent activity", err);
     }
   };
 
+  useEffect(() => {
+    fetchStats();
+    fetchLeaves();
+    fetchActivities();
+  }, []);
+
+  useEffect(() => {
+    fetchRoomSlots(selectedDay, roomCategory, selectedShiftId);
+  }, [selectedDay, roomCategory, selectedShiftId]);
+
   const handleCategoryChange = (cat: "active" | "labs" | "floor2" | "all") => {
     setRoomCategory(cat);
-    fetchReports(cat);
   };
 
   // Leave Management Handlers
@@ -406,17 +473,18 @@ export const AdminDashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Bottom Row: Room Availability Heatmap & Recent Activity Feed */}
+      {/* Bottom Row: Day-Wise Room Availability Across Time Periods & Recent Activity Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-3">
             <div>
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <Building className="w-5 h-5 text-blue-600" />
-                <span>Room Availability & Utilization</span>
+                <span>Room Availability & Period Utilization</span>
               </h2>
               <p className="text-xs text-slate-500">
-                Academic Week: Mon 2 Nov – Fri 6 Nov 2026 · Real-time schedule occupancy
+                Day-Wise Breakdown · {roomDayData ? `${roomDayData.day} (${roomDayData.target_date}) · ${roomDayData.shift_name} Shift · ${roomDayData.available_rooms_count} Rooms Free, ${roomDayData.occupied_rooms_count} Allotted` : "Loading occupancy..."}
               </p>
             </div>
             <div className="flex items-center gap-3 text-[10px] font-semibold">
@@ -426,6 +494,76 @@ export const AdminDashboard: React.FC = () => {
               <span className="flex items-center gap-1 text-amber-700">
                 <span className="w-2 h-2 rounded-full bg-amber-500" /> Occupied
               </span>
+              <span className="flex items-center gap-1 text-slate-400">
+                <span className="w-2 h-2 rounded-full bg-slate-300" /> Break
+              </span>
+            </div>
+          </div>
+
+          {/* Day Cycle Selector & Shift Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80 p-2.5 rounded-2xl border border-slate-200/70">
+            {/* Day Cycler with Arrows */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={cyclePrevDay}
+                className="p-1.5 rounded-xl border border-slate-200 hover:bg-white text-slate-600 transition cursor-pointer"
+                title="Previous Day"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-1 overflow-x-auto text-xs font-semibold">
+                {academicDays.map((d) => (
+                  <button
+                    key={d.day}
+                    onClick={() => setSelectedDay(d.day)}
+                    className={`px-3 py-1.5 rounded-xl border transition cursor-pointer shrink-0 ${
+                      selectedDay === d.day
+                        ? "bg-blue-600 text-white border-blue-600 shadow-xs shadow-blue-500/20"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span>{d.label}</span>
+                    <span className="text-[10px] opacity-80 block font-normal">{d.date}</span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={cycleNextDay}
+                className="p-1.5 rounded-xl border border-slate-200 hover:bg-white text-slate-600 transition cursor-pointer"
+                title="Next Day"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Shift Filter Switcher */}
+            <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedShiftId(1)}
+                className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  selectedShiftId === 1
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Morning (09:10-14:15)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedShiftId(2)}
+                className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  selectedShiftId === 2
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Afternoon (12:20-17:25)
+              </button>
             </div>
           </div>
 
@@ -442,7 +580,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => handleCategoryChange(tab.id as any)}
                 className={`px-3 py-1.5 rounded-xl border font-semibold transition cursor-pointer ${
                   roomCategory === tab.id
-                    ? "bg-blue-600 border-blue-600 text-white shadow-xs"
+                    ? "bg-slate-900 border-slate-900 text-white shadow-xs"
                     : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                 }`}
               >
@@ -451,72 +589,90 @@ export const AdminDashboard: React.FC = () => {
             ))}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                  <th className="py-2.5 px-3">Room & Floor</th>
-                  {rooms[0]?.days.map((d) => (
-                    <th key={d.day} className="py-2.5 px-3 text-center">
-                      {d.day}{" "}
-                      <span className="block text-[10px] font-normal text-slate-400">{d.date_str}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {rooms.map((rm) => (
-                  <tr key={rm.room_code} className="hover:bg-slate-50/60 transition">
-                    <td className="py-2.5 px-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-800">Room {rm.room_code}</span>
-                        {rm.is_primary_lab ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                            Primary Lab
-                          </span>
-                        ) : rm.room_type === "Lab" ? (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                            Lab
-                          </span>
-                        ) : rm.floor?.includes("Floor 2") ? (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                            Floor 2 Theory
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-500 font-normal">
-                            {rm.room_type}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">{rm.floor}</span>
-                    </td>
-                    {rm.days.map((d, i) => (
-                      <td key={i} className="py-2.5 px-3 text-center">
-                        <span
-                          title={
-                            d.session_details && d.session_details.length > 0
-                              ? d.session_details.join("\n")
-                              : d.status === "Occupied"
-                              ? "Occupied by scheduled lecture"
-                              : "No scheduled lectures. Available."
-                          }
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-lg inline-block cursor-help transition ${
-                            d.status === "Available"
-                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                              : "bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs"
-                          }`}
-                        >
-                          {d.status === "Occupied"
-                            ? `Occupied (${d.sessions_count || 1})`
-                            : "Available"}
+          {/* Day-Wise Period Utilization Table */}
+          {loadingRooms ? (
+            <div className="py-12 text-center text-xs text-slate-400 animate-pulse">Loading room period occupancy...</div>
+          ) : !roomDayData || roomDayData.rooms.length === 0 ? (
+            <div className="py-12 text-center text-sm text-slate-400">No rooms found for selected category.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                    <th className="py-2.5 px-3 min-w-[150px]">Room & Wing</th>
+                    {roomDayData.period_headers.map((p) => (
+                      <th key={p.slot_id} className="py-2.5 px-2 text-center min-w-[110px]">
+                        <span className="block font-bold">{p.start_time} - {p.end_time}</span>
+                        <span className="block text-[10px] font-normal text-slate-400">
+                          {p.is_teaching_slot ? `Period ${p.slot_order}` : "Structural Break"}
                         </span>
-                      </td>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {roomDayData.rooms.map((rm) => (
+                    <tr key={rm.room_code} className="hover:bg-slate-50/70 transition">
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-extrabold text-slate-900 text-xs">Room {rm.room_code}</span>
+                          {rm.is_primary_lab ? (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                              Primary Lab
+                            </span>
+                          ) : rm.room_type === "Lab" ? (
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                              Lab
+                            </span>
+                          ) : rm.floor?.includes("Floor 2") ? (
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                              Floor 2
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">{rm.floor}</span>
+                      </td>
+
+                      {rm.slots.map((s) => {
+                        if (!s.is_teaching_slot) {
+                          return (
+                            <td key={s.slot_id} className="py-2 px-2 text-center">
+                              <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 inline-block">
+                                ☕ Break
+                              </span>
+                            </td>
+                          );
+                        }
+
+                        const isOccupied = s.status === "Occupied";
+
+                        return (
+                          <td key={s.slot_id} className="py-2 px-2 text-center">
+                            {isOccupied ? (
+                              <div
+                                title={`Occupied by: ${s.subject_name} (${s.subject_code})\nTeacher: ${s.teacher_name}\nSection: ${s.section_name}`}
+                                className="p-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 text-left cursor-help transition shadow-2xs"
+                              >
+                                <span className="text-[9px] font-black uppercase tracking-wider bg-amber-200 text-amber-900 px-1 py-0.2 rounded inline-block">
+                                  Occupied
+                                </span>
+                                <p className="font-bold text-[10px] truncate mt-0.5">{s.subject_code || s.subject_name}</p>
+                                <p className="text-[9px] text-slate-500 truncate">{s.teacher_name?.split(" ")[0]} · {s.section_name}</p>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-1 rounded-lg inline-block bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                ✓ Available
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Recent System Activity Feed */}

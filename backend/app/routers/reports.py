@@ -18,6 +18,8 @@ from app.models import (
     ClassSession,
     Timetable,
     TimetableChange,
+    TimetableDetail,
+    TimeSlot,
 )
 from app.schemas.reports import (
     AdminSystemStats,
@@ -26,6 +28,10 @@ from app.schemas.reports import (
     FacultyWorkloadItem,
     DepartmentPerformanceItem,
     RecentActivityItem,
+    RoomPeriodAvailabilityItem,
+    RoomSlotAllocation,
+    DayPeriodHeader,
+    RoomDayPeriodsResponse,
 )
 
 router = APIRouter(prefix="/reports", tags=["Analytics & Reports"])
@@ -149,6 +155,199 @@ def get_room_availability(
         )
 
     return result
+
+
+@router.get("/admin/room-day-slots", response_model=RoomDayPeriodsResponse)
+def get_room_day_slots(
+    day: str = Query(default="Mon", description="Day of week: Mon, Tue, Wed, Thu, Fri"),
+    target_date: Optional[date] = None,
+    category: Optional[str] = Query(default="active", description="'active', 'labs', 'floor2', 'all'"),
+    shift_id: Optional[int] = Query(default=1, description="1 for Morning, 2 for Afternoon"),
+    db: Session = Depends(get_db),
+):
+    """
+    Day-wise room availability breakdown across time periods (Period 1 to Period 5/6).
+    Shows all rooms and whether they are Available or Occupied by an allotted lecture.
+    """
+    day_date_map = {
+        "Mon": date(2026, 11, 2),
+        "Tue": date(2026, 11, 3),
+        "Wed": date(2026, 11, 4),
+        "Thu": date(2026, 11, 5),
+        "Fri": date(2026, 11, 6),
+    }
+    cur_date = target_date or day_date_map.get(day, date(2026, 11, 2))
+    day_str = cur_date.strftime("%a") if target_date else day
+
+    # Fetch slots for this day and shift
+    slots = (
+        db.query(TimeSlot)
+        .filter(
+            TimeSlot.day_of_week == day_str,
+            TimeSlot.shift_id == shift_id
+        )
+        .order_by(TimeSlot.slot_order)
+        .all()
+    )
+
+    period_headers = []
+    for s in slots:
+        start_fmt = s.start_time.strftime("%H:%M")
+        end_fmt = s.end_time.strftime("%H:%M")
+        period_headers.append(
+            DayPeriodHeader(
+                slot_id=s.slot_id,
+                slot_order=s.slot_order,
+                start_time=start_fmt,
+                end_time=end_fmt,
+                time_label=f"{start_fmt} - {end_fmt}" + (" (Break)" if not s.is_teaching_slot else ""),
+                is_teaching_slot=s.is_teaching_slot,
+            )
+        )
+
+    # Institutional Room Architecture:
+    lab_codes = ["107", "103", "G01", "G03"]
+    theory_codes = ["201", "202", "203", "204", "205", "206", "207", "208"]
+    all_db_rooms = db.query(Room).filter_by(is_active=True).all()
+    room_map = {r.room_code: r for r in all_db_rooms}
+
+    if category == "labs":
+        selected_rooms = [room_map[c] for c in lab_codes if c in room_map]
+    elif category == "floor2":
+        selected_rooms = [room_map[c] for c in theory_codes if c in room_map]
+    elif category == "all":
+        selected_rooms = sorted(all_db_rooms, key=lambda r: (0 if r.room_code in lab_codes else (1 if r.room_code in theory_codes else 2), r.room_code))
+    else:  # active: labs + floor2
+        ordered = lab_codes + theory_codes
+        selected_rooms = [room_map[c] for c in ordered if c in room_map]
+
+    # Active timetable if any
+    active_tt = (
+        db.query(Timetable)
+        .filter(Timetable.status == "Active")
+        .order_by(Timetable.timetable_id.desc())
+        .first()
+    )
+
+    room_items = []
+    total_avail_count = 0
+    total_occ_count = 0
+
+    for r in selected_rooms:
+        floor_label = (
+            "Floor 1 (Primary Lab)" if r.room_code == "107"
+            else ("Floor 1 (Computer Lab)" if r.room_code == "103"
+            else ("Ground Floor (Computer Lab)" if r.room_code in ("G01", "G03")
+            else ("Floor 2 (Theory Wing)" if r.room_code in theory_codes
+            else ("Ground Floor" if r.room_code.startswith("G") else "Floor 1"))))
+        )
+
+        allocations = []
+        has_occ = False
+
+        for s in slots:
+            # 1. Check ClassSession for this room, slot and date
+            session = (
+                db.query(ClassSession)
+                .filter(
+                    ClassSession.room_id == r.room_id,
+                    ClassSession.slot_id == s.slot_id,
+                    ClassSession.session_date == cur_date,
+                    ClassSession.status != "Cancelled"
+                )
+                .first()
+            )
+
+            # 2. Check TimetableDetail if no ClassSession found
+            detail = None
+            if not session and active_tt:
+                detail = (
+                    db.query(TimetableDetail)
+                    .filter(
+                        TimetableDetail.timetable_id == active_tt.timetable_id,
+                        TimetableDetail.room_id == r.room_id,
+                        TimetableDetail.slot_id == s.slot_id
+                    )
+                    .first()
+                )
+
+            start_fmt = s.start_time.strftime("%H:%M")
+            end_fmt = s.end_time.strftime("%H:%M")
+
+            if session:
+                has_occ = True
+                allocations.append(
+                    RoomSlotAllocation(
+                        slot_id=s.slot_id,
+                        slot_order=s.slot_order,
+                        start_time=start_fmt,
+                        end_time=end_fmt,
+                        is_teaching_slot=s.is_teaching_slot,
+                        status="Occupied",
+                        subject_name=session.subject.name if session.subject else "Lecture",
+                        subject_code=session.subject.subject_code if session.subject else "",
+                        teacher_name=session.teacher.user.full_name if (session.teacher and session.teacher.user) else "",
+                        section_name=session.section.section_name if session.section else "",
+                    )
+                )
+            elif detail:
+                has_occ = True
+                allocations.append(
+                    RoomSlotAllocation(
+                        slot_id=s.slot_id,
+                        slot_order=s.slot_order,
+                        start_time=start_fmt,
+                        end_time=end_fmt,
+                        is_teaching_slot=s.is_teaching_slot,
+                        status="Occupied",
+                        subject_name=detail.subject.name if detail.subject else "Lecture",
+                        subject_code=detail.subject.subject_code if detail.subject else "",
+                        teacher_name=detail.teacher.user.full_name if (detail.teacher and detail.teacher.user) else "",
+                        section_name=detail.section.section_name if detail.section else "",
+                    )
+                )
+            else:
+                allocations.append(
+                    RoomSlotAllocation(
+                        slot_id=s.slot_id,
+                        slot_order=s.slot_order,
+                        start_time=start_fmt,
+                        end_time=end_fmt,
+                        is_teaching_slot=s.is_teaching_slot,
+                        status="Break" if not s.is_teaching_slot else "Available",
+                    )
+                )
+
+        if has_occ:
+            total_occ_count += 1
+        else:
+            total_avail_count += 1
+
+        room_items.append(
+            RoomPeriodAvailabilityItem(
+                room_id=r.room_id,
+                room_code=r.room_code,
+                room_type=r.room_type,
+                capacity=r.capacity,
+                floor=floor_label,
+                is_primary_lab=(r.room_code == "107"),
+                slots=allocations,
+            )
+        )
+
+    shift_obj = db.query(Shift).filter_by(shift_id=shift_id).first()
+    shift_name = shift_obj.name if shift_obj else ("Morning" if shift_id == 1 else "Afternoon")
+
+    return RoomDayPeriodsResponse(
+        day=day_str,
+        target_date=cur_date.strftime("%d %b %Y"),
+        shift_name=shift_name,
+        period_headers=period_headers,
+        rooms=room_items,
+        total_rooms=len(room_items),
+        available_rooms_count=total_avail_count,
+        occupied_rooms_count=total_occ_count,
+    )
 
 
 @router.get("/hod/faculty-workload", response_model=List[FacultyWorkloadItem])
