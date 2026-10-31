@@ -153,7 +153,6 @@ export const TimetableStudio: React.FC = () => {
   const program = "BCA";
   const [selectedSections, setSelectedSections] = useState<string[]>(["Section III", "Section III-AF"]);
   const [selectedShift, setSelectedShift] = useState<string>("All Shifts");
-  const operatingDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
   const [generationMode, setGenerationMode] = useState<"new" | "repair" | "alternatives" | "draft">("new");
   const [dateSelectionMode, setDateSelectionMode] = useState<"range" | "single">("range");
   const [startDate, setStartDate] = useState<string>("2026-11-02");
@@ -858,8 +857,8 @@ export const TimetableStudio: React.FC = () => {
               </div>
             </div>
 
-            {/* Sections & Operating Days */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+            {/* Sections Selection */}
+            <div className="pt-2">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-700">Target Sections</label>
                 <div className="flex items-center gap-3">
@@ -889,21 +888,6 @@ export const TimetableStudio: React.FC = () => {
                       </span>
                     </label>
                   ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700">Days of Operation</label>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {operatingDays.map((day) => (
-                    <span
-                      key={day}
-                      className="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-lg"
-                    >
-                      {day}
-                    </span>
-                  ))}
-                  <span className="text-[11px] text-slate-400 pl-2">Standard 5-day academic week</span>
                 </div>
               </div>
             </div>
