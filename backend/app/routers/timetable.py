@@ -545,7 +545,7 @@ def get_student_today_classes(
 def get_teacher_today_classes(
     target_date: Optional[date] = None,
     simulated_time: Optional[str] = None,
-    current_user: User = Depends(require_roles("Teacher")),
+    current_user: User = Depends(require_roles("Teacher", "HOD", "Admin", "Principal")),
     db: Session = Depends(get_db),
 ):
     teacher = current_user.teacher_profile

@@ -35,7 +35,25 @@ def get_session_roster(
 ):
     session = db.query(ClassSession).filter_by(session_id=session_id).first()
     if not session:
-        raise HTTPException(status_code=404, detail="Class session not found")
+        # Graceful fallback: check if session_id corresponds to a TimetableDetail
+        from app.models.scheduling import TimetableDetail
+        detail = db.query(TimetableDetail).filter_by(detail_id=session_id).first()
+        if detail:
+            session = ClassSession(
+                timetable_id=detail.timetable_id,
+                section_id=detail.section_id,
+                subject_id=detail.subject_id,
+                teacher_id=detail.teacher_id,
+                room_id=detail.room_id,
+                slot_id=detail.slot_id,
+                session_date=date.today(),
+                status="Scheduled",
+            )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+        else:
+            raise HTTPException(status_code=404, detail="Class session not found")
 
     # Get all students enrolled in this section
     students = (
@@ -109,7 +127,25 @@ def submit_session_attendance(
 ):
     session = db.query(ClassSession).filter_by(session_id=session_id).first()
     if not session:
-        raise HTTPException(status_code=404, detail="Class session not found")
+        # Graceful fallback: check if session_id corresponds to a TimetableDetail
+        from app.models.scheduling import TimetableDetail
+        detail = db.query(TimetableDetail).filter_by(detail_id=session_id).first()
+        if detail:
+            session = ClassSession(
+                timetable_id=detail.timetable_id,
+                section_id=detail.section_id,
+                subject_id=detail.subject_id,
+                teacher_id=detail.teacher_id,
+                room_id=detail.room_id,
+                slot_id=detail.slot_id,
+                session_date=date.today(),
+                status="Scheduled",
+            )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+        else:
+            raise HTTPException(status_code=404, detail="Class session not found")
 
     # If user is Teacher, verify they are teacher_id or substitute_teacher_id
     if current_user.role and current_user.role.role_name == "Teacher":

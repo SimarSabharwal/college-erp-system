@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { TeacherDashboard } from "./TeacherDashboard";
 import {
   Calendar,
   CheckCircle2,
@@ -8,6 +9,9 @@ import {
   Send,
   XCircle,
   X,
+  BookOpen,
+  UserCheck,
+  GraduationCap,
 } from "lucide-react";
 
 interface LeaveItem {
@@ -68,6 +72,9 @@ interface AdminStats {
 }
 
 export const HODDashboard: React.FC = () => {
+  // Dual-Role Interface: HOD Administration vs. Teaching Faculty
+  const [viewMode, setViewMode] = useState<"hod" | "teacher">("hod");
+
   const [leaves, setLeaves] = useState<LeaveItem[]>([]);
   const [loadingLeaves, setLoadingLeaves] = useState<boolean>(true);
   const [actionNotes, setActionNotes] = useState<{ [key: number]: string }>({});
@@ -249,7 +256,96 @@ export const HODDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Feedback Alert */}
+      {/* Dual Role Selector: HOD Administration vs. Teaching Faculty */}
+      <div className="bg-white rounded-3xl p-3.5 border border-slate-200/90 shadow-xs">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {/* Big Box 1: HOD Administration */}
+          <button
+            type="button"
+            onClick={() => setViewMode("hod")}
+            className={`p-5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer relative overflow-hidden flex items-start gap-4 ${
+              viewMode === "hod"
+                ? "bg-gradient-to-br from-purple-500/10 via-indigo-500/5 to-white border-purple-600 shadow-md shadow-purple-500/10"
+                : "bg-slate-50/70 border-slate-200/80 hover:bg-slate-100/70 opacity-75 hover:opacity-100"
+            }`}
+          >
+            <div
+              className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                viewMode === "hod" ? "bg-purple-600 text-white shadow-xs" : "bg-slate-200 text-slate-600"
+              }`}
+            >
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-extrabold text-slate-900 tracking-tight">HOD Administration</span>
+                {viewMode === "hod" && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-purple-600 text-white px-2.5 py-0.5 rounded-full">
+                    Active Section
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                Department Oversight · Faculty Workloads (9 Professors) · Leave Approvals · Official Curriculum & Department Timetable
+              </p>
+            </div>
+          </button>
+
+          {/* Big Box 2: Teaching Faculty */}
+          <button
+            type="button"
+            onClick={() => setViewMode("teacher")}
+            className={`p-5 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer relative overflow-hidden flex items-start gap-4 ${
+              viewMode === "teacher"
+                ? "bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-white border-emerald-600 shadow-md shadow-emerald-500/10"
+                : "bg-slate-50/70 border-slate-200/80 hover:bg-slate-100/70 opacity-75 hover:opacity-100"
+            }`}
+          >
+            <div
+              className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                viewMode === "teacher" ? "bg-emerald-600 text-white shadow-xs" : "bg-slate-200 text-slate-600"
+              }`}
+            >
+              <UserCheck className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-extrabold text-slate-900 tracking-tight">Teacher / Faculty</span>
+                {viewMode === "teacher" && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-600 text-white px-2.5 py-0.5 rounded-full">
+                    Active Section
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                My Teaching Lectures · Conduct Class · Student Attendance Marking (Section III) · My Personal Weekly Teaching Timetable
+              </p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {viewMode === "teacher" ? (
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-900 font-medium flex items-center justify-between shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <GraduationCap className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                <strong>Teaching Faculty Mode Active:</strong> You are viewing Dr. Mahesh Chaubey's personal lecture schedule, class attendance controls, and teaching tools.
+              </span>
+            </div>
+            <button
+              onClick={() => setViewMode("hod")}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 underline cursor-pointer shrink-0"
+            >
+              Switch back to HOD Overview →
+            </button>
+          </div>
+          <TeacherDashboard />
+        </div>
+      ) : (
+        <>
+          {/* Feedback Alert */}
       {feedback && (
         <div
           className={`p-4 rounded-xl border flex items-center justify-between text-xs font-medium ${
@@ -585,6 +681,8 @@ export const HODDashboard: React.FC = () => {
           </table>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

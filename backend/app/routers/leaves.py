@@ -70,7 +70,7 @@ def map_leave_to_response(lr: LeaveRequest, db: Session) -> LeaveResponse:
 @router.post("/", response_model=LeaveResponse)
 def apply_leave(
     payload: ApplyLeaveRequest,
-    current_user: User = Depends(require_roles("Teacher")),
+    current_user: User = Depends(require_roles("Teacher", "HOD")),
     db: Session = Depends(get_db),
 ):
     teacher = current_user.teacher_profile
@@ -418,7 +418,7 @@ def admin_deny_leave(
 @router.post("/{leave_id}/cancel", response_model=LeaveResponse)
 def cancel_leave(
     leave_id: int,
-    current_user: User = Depends(require_roles("Teacher")),
+    current_user: User = Depends(require_roles("Teacher", "HOD")),
     db: Session = Depends(get_db),
 ):
     teacher = current_user.teacher_profile
