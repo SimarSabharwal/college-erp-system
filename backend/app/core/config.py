@@ -1,5 +1,10 @@
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+BASE_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+DEFAULT_DB_PATH = BASE_BACKEND_DIR / "erp_system.db"
 
 
 class Settings(BaseSettings):
@@ -12,8 +17,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
-    # Defaults to local SQLite for immediate zero-config execution; seamlessly accepts PostgreSQL connection string
-    DATABASE_URL: str = "sqlite:///./erp_system.db"
+    # Canonical database path: always resolves to backend/erp_system.db regardless of process cwd
+    DATABASE_URL: str = f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
 
     class Config:
         case_sensitive = True
