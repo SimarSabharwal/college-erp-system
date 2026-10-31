@@ -1,0 +1,10 @@
+teacher_code,full_name,employee_no,department_name,designation,max_hours_per_week,max_consecutive_slots,email,password_hash,source_sections,notes
+MAG,Dr. Mansi Agnihotri,MAG,BCA,,20,2,,,BCA III Afternoon,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.
+DSB,Dr. Daljeet S Bawa,DSB,BCA,,20,2,,,BCA III Afternoon,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.
+MGS,Dr. Megha Sehgal,MGS,BCA,,20,2,,,BCA III Morning,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.
+UG,Dr. Usha Gupta,UG,BCA,,20,2,,,BCA III Morning,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.
+MKC,Dr. Mahesh Chaubey,MKC,BCA,,20,2,,,BCA III Afternoon,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.
+AK,Dr. Ajay Kumar,AK,BCA,,20,2,,,BCA III Afternoon,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.
+AKR,Mr. Amit Kumar,AKR,BCA,,20,2,,,BCA III Afternoon,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.
+NPN,Mr. Nripesh Kumar Nrip,NPN,BCA,,20,2,,,BCA III Afternoon,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.
+YK,Mr. Yashwant Kumar,YK,BCA,,20,2,,,BCA III Afternoon,Employee number uses timetable abbreviation as a provisional external key; not an official employee ID.

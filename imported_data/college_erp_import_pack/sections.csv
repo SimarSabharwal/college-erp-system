@@ -1,0 +1,3 @@
+section_name,program_code,shift_name,semester_no,academic_year_name,max_strength,is_active,source_label,notes
+III,BCA,Morning,3,2026-27,59,True,BCA III (MORNING),max_strength is count of 59 students listed in marks sheet; not stated as official capacity.
+III,BCA,Afternoon,3,2026-27,,True,BCA III (AFTERNOON),Afternoon class roster not provided; max_strength unknown.

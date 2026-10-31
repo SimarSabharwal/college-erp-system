@@ -1,0 +1,19 @@
+teacher_code,teacher_name,subject_code,can_teach,priority,shift_name,source_note
+MAG,Dr. Mansi Agnihotri,OS,True,1,Morning,Derived from faculty/subject legend and timetable abbreviations.
+DSB,Dr. Daljeet S Bawa,SE,True,1,Morning,Derived from faculty/subject legend and timetable abbreviations.
+MGS,Dr. Megha Sehgal,JP,True,1,Morning,Derived from faculty/subject legend and timetable abbreviations.
+UG,Dr. Usha Gupta,ST,True,1,Morning,Derived from faculty/subject legend and timetable abbreviations.
+MKC,Dr. Mahesh Chaubey,ORACLE_LAB,True,1,Morning,Derived from faculty/subject legend and timetable abbreviations.
+MGS,Dr. Megha Sehgal,JAVA_LAB,True,1,Morning,Derived from faculty/subject legend and timetable abbreviations.
+AK,Dr. Ajay Kumar,SUM,True,1,Morning,Derived from faculty/subject legend and timetable abbreviations.
+AK,Dr. Ajay Kumar,YOGA,True,1,Morning,Derived from faculty/subject legend and timetable abbreviations.
+AKR,Mr. Amit Kumar,YOGA,True,2,Morning,Derived from faculty/subject legend and timetable abbreviations.
+DSB,Dr. Daljeet S Bawa,OS,True,1,Afternoon,Derived from faculty/subject legend and timetable abbreviations.
+MAG,Dr. Mansi Agnihotri,SE,True,1,Afternoon,Derived from faculty/subject legend and timetable abbreviations.
+NPN,Mr. Nripesh Kumar Nrip,JP,True,1,Afternoon,Derived from faculty/subject legend and timetable abbreviations.
+YK,Mr. Yashwant Kumar,ST,True,1,Afternoon,Derived from faculty/subject legend and timetable abbreviations.
+MKC,Dr. Mahesh Chaubey,ORACLE_LAB,True,1,Afternoon,Derived from faculty/subject legend and timetable abbreviations.
+NPN,Mr. Nripesh Kumar Nrip,JAVA_LAB,True,1,Afternoon,Derived from faculty/subject legend and timetable abbreviations.
+AK,Dr. Ajay Kumar,SUM,True,1,Afternoon,Derived from faculty/subject legend and timetable abbreviations.
+AK,Dr. Ajay Kumar,YOGA,True,1,Afternoon,Derived from faculty/subject legend and timetable abbreviations.
+AKR,Mr. Amit Kumar,YOGA,True,2,Afternoon,Derived from faculty/subject legend and timetable abbreviations.

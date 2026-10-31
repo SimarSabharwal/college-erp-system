@@ -1,0 +1,872 @@
+<USER_REQUEST>
+# TASK: Redesign and Upgrade the Automated Timetable Generation Studio
+
+You are a senior product designer, frontend engineer, and constraint-scheduling systems architect working on an existing College ERP application.
+
+Your task is to redesign and improve the existing **Automated Timetable Generation Studio** into a polished, intelligent, configurable timetable-generation workflow.
+
+Do not build a disconnected demo or replace the existing application architecture. Inspect the current codebase, database schema, API endpoints, scheduling algorithm, and existing timetable-generation UI first. Then implement the redesign using the existing technology stack and conventions.
+
+The application already has teacher-subject assignments, room records, shift information, time slots, and scheduling constraints. Reuse this data.
+
+The user should primarily configure the shift, rooms, scheduling requirements, and optimization preferences. They should not need to reassign teachers during every generation run.
+
+---
+
+# 1. DESIGN DIRECTION
+
+Redesign the page to feel like a premium Apple-inspired academic administration product.
+
+## Visual requirements
+
+- Clean white or subtle off-white background.
+- Dark, high-contrast typography.
+- Restrained blue accents for primary actions.
+- Green for validated or successful states.
+- Amber for warnings.
+- Red for errors or critical conflicts.
+- Rounded cards with subtle borders.
+- Minimal shadows.
+- Generous but controlled spacing.
+- Consistent iconography.
+- Clear visual hierarchy.
+- Smooth, subtle transitions.
+- Professional, information-dense layouts without unnecessary clutter.
+
+Do not use glassmorphism across the entire interface.
+
+Avoid oversized headings, excessive gradients, decorative illustrations, giant cards, unnecessary empty space, and excessive use of colored backgrounds.
+
+The interface should be compact enough that the main configuration and primary action are visible without excessive scrolling on a typical desktop screen.
+
+Use responsive layouts for desktop, tablet, and mobile.
+
+On mobile, stack the configuration sections vertically, make primary actions accessible, and convert the timetable grid into a usable scrollable or alternative compact layout.
+
+## Preserve existing application styling
+
+Inspect the existing design system before implementing the redesign.
+
+Reuse existing components, fonts, spacing tokens, buttons, icons, modals, and form controls wherever appropriate.
+
+Do not introduce a new component library or replace the application's entire design system without a clear technical reason.
+
+---
+
+# 2. RESTRUCTURE THE WORKFLOW
+
+Replace the current five large workflow tiles with a more compact stepper or progress indicator.
+
+Use these five stages:
+
+1. Scope
+2. Requirements
+3. Constraints
+4. Generate
+5. Review & Publish
+
+Show the active step, completed steps, and validation errors.
+
+Allow users to navigate backward without losing configuration.
+
+Do not require five separate full-page screens. Use a compact wizard, progressive disclosure, or a single page with clearly organized expandable sections.
+
+The interface should remain understandable to a nontechnical college administrator.
+
+---
+
+# 3. STEP ONE: GENERATION SCOPE
+
+Create a compact configuration section called "What should we schedule?"
+
+Include the following fields.
+
+## Academic scope
+
+- Academic year.
+- Semester.
+- Program.
+- Section or sections.
+- Shift.
+- Days of operation.
+- Effective start and end dates.
+- Existing timetable version, when applicable.
+
+The shift selector must use actual shift records from the database.
+
+Support the institution's configured shift names, including Morning and Afternoon where these are the names used by the college.
+
+Do not hardcode "Evening" if the database and actual timetable use "Afternoon".
+
+## Generation mode
+
+Provide the following options:
+
+### Generate New
+Create a new timetable for the selected scope.
+
+### Repair Existing
+Preserve valid existing assignments and repair conflicts or missing sessions.
+
+### Generate Alternatives
+Generate multiple valid candidates with different optimization trade-offs.
+
+### Regenerate Draft
+Replace an existing unapproved draft only after confirmation.
+
+Never silently overwrite a published timetable.
+
+For each mode, explain the behavior in one short sentence.
+
+---
+
+# 4. STEP TWO: ACADEMIC REQUIREMENTS
+
+The system must already know which teachers are assigned to which subjects.
+
+Reuse the existing teacher-subject mapping.
+
+Do not ask the administrator to assign teachers again during normal generation.
+
+Instead, display a read-only summary of the current assignments, with an option to inspect or edit them through the appropriate existing management interface.
+
+Create a compact "Scheduling Requirements" section.
+
+## Subject requirements
+
+For each subject and selected section, allow the authorized administrator to configure:
+
+- Required sessions per week.
+- Session duration.
+- Sessions per day.
+- Preferred distribution across the week.
+- Whether consecutive sessions are required.
+- Whether a session requires a specialized room.
+- Whether a subject has fixed or preferred time slots.
+- Whether a subject can be scheduled in multiple eligible rooms.
+
+Support session types:
+
+- Theory lecture.
+- Practical or laboratory.
+- Tutorial.
+- Seminar.
+- Other institution-configured types.
+
+Use actual database values wherever available.
+
+Do not infer the required weekly frequency from credit values alone.
+
+If session requirements are missing, flag them and ask the user to configure them before generation.
+
+## Laboratory requirements
+
+Allow the administrator to define:
+
+- Required consecutive slots.
+- Compatible laboratory types.
+- Minimum room capacity.
+- Required equipment.
+- Whether the lab must use the same room for the complete session.
+
+Do not assume that every laboratory requires exactly two slots. Use the configured duration.
+
+## Teacher assignments summary
+
+Display a compact table:
+
+| Subject | Assigned Teachers | Shift | Eligibility |
+|---|---|---|---|
+| Java Programming | Existing assignments | Selected shift | Valid / Needs attention |
+| Lab on Java | Existing assignments | Selected shift | Valid / Needs attention |
+| Lab on Oracle | Existing assignments | Selected shift | Valid / Needs attention |
+
+Populate this table from the database. The names above are examples of the format, not hardcoded records.
+
+If a subject has no eligible teacher, show a blocking error.
+
+If multiple teachers are eligible, let the scheduler choose among them according to eligibility, availability, workload limits, and configured preferences.
+
+Respect existing teacher-subject-shift locks.
+
+---
+
+# 5. STEP THREE: ADVANCED CONSTRAINT SYSTEM
+
+This is the most important part of the redesign.
+
+Replace the current small collection of constraint cards with a categorized constraint configuration panel.
+
+Organize constraints into:
+
+1. Faculty.
+2. Students and Sections.
+3. Rooms and Facilities.
+4. Academic Rules.
+5. Time and Breaks.
+6. Optimization Preferences.
+
+Each category should have a concise summary and an expandable details panel.
+
+Use clear controls such as toggles, dropdowns, numeric inputs, and priority selectors.
+
+Every constraint must have a clear description and indicate whether it is a hard constraint or a soft preference.
+
+Do not create controls that look functional but have no effect on the backend.
+
+## A. FACULTY CONSTRAINTS
+
+### 1. Teacher-Subject Eligibility
+
+Type: Hard constraint.
+
+Default: Enabled.
+
+Only use teachers assigned or otherwise authorized to teach the relevant subject.
+
+Display the number of eligible teachers per subject.
+
+### 2. Teacher-Subject-Shift Lock
+
+Type: Hard constraint.
+
+Default: Follow existing institutional configuration.
+
+Reuse the existing teacher-subject-shift lock table and rules.
+
+Display the locked assignments and their effects.
+
+Do not silently override existing locks.
+
+### 3. Teacher Availability
+
+Type: Hard constraint.
+
+Default: Enabled.
+
+Respect:
+
+- Teacher availability records.
+- Approved leave.
+- Blocked periods.
+- Existing assignments.
+- Other institutional restrictions.
+
+### 4. Maximum Consecutive Classes
+
+Type: Hard constraint.
+
+Default: Use the existing institutional default, currently configured as two slots in the existing interface.
+
+Allow authorized users to configure a permitted value.
+
+Support teacher-specific exceptions if the existing data model supports them, or propose a schema migration if it does not.
+
+Display a warning when an exception conflicts with institutional policy.
+
+### 5. Maximum Daily Teaching Load
+
+Type: Hard constraint.
+
+Allow configuration in teaching periods or minutes.
+
+Support institutional defaults and authorized teacher-specific limits.
+
+### 6. Maximum Weekly Teaching Load
+
+Type: Hard constraint.
+
+Respect contractual or departmental workload limits where configured.
+
+### 7. Workload Fairness
+
+Type: Soft constraint.
+
+Options:
+
+- Disabled.
+- Balanced.
+- Strongly prioritized.
+
+Reduce unnecessary differences in teaching workload between eligible teachers while respecting workload limits and existing assignments.
+
+### 8. Teacher Idle Gaps
+
+Type: Soft constraint.
+
+Prefer fewer unnecessary gaps between a teacher's assigned classes.
+
+Allow the administrator to adjust the priority.
+
+### 9. Teacher Time Preferences
+
+Type: Soft constraint.
+
+Respect submitted preferences for preferred days and times.
+
+Distinguish preferences from genuine unavailability.
+
+A preference must never override a hard availability restriction.
+
+---
+
+## B. STUDENT AND SECTION CONSTRAINTS
+
+### 1. No Section Double-Booking
+
+Type: Hard constraint.
+
+A section cannot attend two sessions simultaneously.
+
+### 2. Required Sessions
+
+Type: Hard completeness requirement.
+
+Schedule every required teaching session.
+
+If all sessions cannot be scheduled, explain which sessions remain unscheduled.
+
+Never silently discard a required lecture.
+
+### 3. Subject Distribution
+
+Type: Soft constraint.
+
+Avoid excessive repetition of the same subject on a single day.
+
+Prefer spreading sessions throughout the week.
+
+Allow configurable minimum gaps between sessions of the same subject.
+
+### 4. Student Idle Gaps
+
+Type: Soft constraint.
+
+Minimize unnecessary gaps between classes.
+
+### 5. Daily Academic Load
+
+Type: Hard or soft according to institutional policy.
+
+Support configurable minimum and maximum teaching periods per day.
+
+### 6. Consecutive Student Classes
+
+Type: Soft constraint by default.
+
+Allow the institution to limit consecutive classes or prefer short breaks between demanding sessions.
+
+Do not apply a hard restriction unless the institution explicitly configures one.
+
+### 7. Shared Student Groups
+
+Type: Hard constraint when enrollment data is available.
+
+Prevent overlapping sessions for student groups that must attend both.
+
+If the application does not yet have student-level enrollment data, clearly identify this as a future capability rather than pretending it is already enforced.
+
+---
+
+## C. ROOM AND FACILITY CONSTRAINTS
+
+### 1. Room Double-Booking
+
+Type: Hard constraint.
+
+A room cannot host overlapping sessions.
+
+### 2. Room Capacity
+
+Type: Hard constraint.
+
+The room must accommodate the relevant section's configured capacity.
+
+If section enrollment or room capacity is missing, report the missing information.
+
+Do not invent capacities.
+
+### 3. Room Type Compatibility
+
+Type: Hard constraint.
+
+Laboratories must use compatible laboratory rooms.
+
+### 4. Room Equipment
+
+Type: Hard constraint when the requirement is mandatory.
+
+Check required equipment against actual room records.
+
+### 5. Room Availability
+
+Type: Hard constraint.
+
+Respect room availability for the complete session duration.
+
+### 6. Room Stability
+
+Type: Soft constraint.
+
+Minimize unnecessary room changes for the same section.
+
+### 7. Room Utilization
+
+Type: Soft constraint.
+
+Prefer efficient room usage without creating excessive student or teacher gaps.
+
+### 8. Room Selection
+
+Allow the administrator to:
+
+- Include or exclude particular rooms.
+- Select permitted room groups.
+- Restrict generation to a specific floor or building.
+- Define room preferences.
+- Lock existing room assignments when appropriate.
+
+Populate all options from actual room records.
+
+Do not hardcode room names or assume every room is suitable for every subject.
+
+---
+
+## D. ACADEMIC RULES
+
+Include:
+
+- Required sessions per subject.
+- Subject session duration.
+- Lab block continuity.
+- Fixed academic sessions.
+- Minimum and maximum sessions per day.
+- Subject-specific scheduling restrictions.
+- Restrictions on repeating a subject on the same day.
+- Academic calendar restrictions.
+- Semester-specific requirements.
+
+Make mandatory rules hard constraints.
+
+Make preferences soft constraints.
+
+If two hard constraints make the problem infeasible, explain the conflict instead of automatically weakening either rule.
+
+---
+
+## E. TIME AND BREAKS
+
+Use actual time-slot records from the database.
+
+Allow the authorized administrator to configure:
+
+- Operating days.
+- Shift start and end times.
+- Available teaching slots.
+- Break periods.
+- Lunch breaks.
+- Restricted periods.
+- Maximum teaching periods per day.
+- First-period preferences.
+- Last-period preferences.
+- Minimum rest between sessions where required.
+- Travel time between buildings if supported.
+
+Display the effective timetable as a visual time-slot grid.
+
+Breaks must remain unavailable for teaching unless the institutional configuration explicitly allows otherwise.
+
+Do not silently replace the actual college timetable with example times.
+
+---
+
+# 6. SOFT-CONSTRAINT PRIORITIES
+
+Create a compact optimization panel.
+
+For each soft constraint, allow:
+
+- Enable or disable.
+- Priority: Low, Medium, High, Critical.
+- Optional numeric weight in Advanced Mode.
+
+Include these objectives:
+
+- Minimize teacher idle gaps.
+- Minimize student idle gaps.
+- Balance faculty workload.
+- Distribute subjects throughout the week.
+- Minimize room changes.
+- Improve room utilization.
+- Respect teacher preferences.
+- Avoid undesirable first periods.
+- Avoid undesirable last periods.
+- Preserve existing assignments during repair.
+- Balance daily student workload.
+
+Use sensible defaults, but explain that priorities can trade off against one another.
+
+Hard constraints must never become optional simply because a soft constraint has a higher weight.
+
+If the optimizer uses weighted objectives, normalize or document the weighting scheme and display the resulting component scores.
+
+Do not present a single quality score without showing how it was calculated.
+
+---
+
+# 7. GENERATION STRATEGY
+
+Create a compact section named "Generation Strategy".
+
+Offer the following presets:
+
+### Balanced
+Balance student experience, faculty workload, and room usage.
+
+### Student First
+Prioritize section schedules, gaps, and subject distribution.
+
+### Faculty First
+Prioritize teacher workload fairness and teacher preferences.
+
+### Room Efficient
+Prioritize room utilization and room stability.
+
+### Minimum Changes
+Preserve existing assignments whenever possible.
+
+### Custom
+Use administrator-configured priorities.
+
+These presets may change soft-constraint priorities only.
+
+They must not disable hard constraints.
+
+## Search effort
+
+Offer:
+
+- Quick.
+- Standard.
+- Thorough.
+- Advanced.
+
+If the backend supports configurable runtime and candidate counts, expose those controls in Advanced Mode.
+
+Use the actual scheduler's supported parameters. Do not add decorative settings that the algorithm ignores.
+
+## Failure handling
+
+Offer three explicit policies:
+
+1. Strict: Return a valid complete timetable or explain why generation failed.
+2. Explain and Retry: Identify blockers and allow the administrator to revise preferences before retrying.
+3. Partial Draft: Save feasible assignments while clearly marking all missing sessions and unresolved requirements.
+
+A partial timetable must never be labeled complete or valid for publication.
+
+---
+
+# 8. GENERATION READINESS CHECK
+
+Before generation, provide a compact validation summary.
+
+Show:
+
+- Academic scope configured.
+- Subject session requirements complete.
+- Teacher assignments available.
+- Teacher eligibility validated.
+- Teacher availability checked.
+- Shift locks validated.
+- Room catalogue available.
+- Room compatibility checked.
+- Time slots configured.
+- Existing timetable conflicts checked.
+- Constraint configuration valid.
+
+Each check should display one of:
+
+- Passed.
+- Warning.
+- Blocked.
+- Not applicable.
+
+Clicking a warning or blocker should explain the underlying issue and offer a relevant action.
+
+For example:
+
+"Lab on Java cannot be scheduled because no compatible laboratory is available for the required consecutive slots."
+
+The message should include actual room and time-slot information from the database.
+
+Do not show fake counts, fake validation results, or fabricated progress.
+
+Disable generation only when a genuine blocking condition exists.
+
+---
+
+# 9. GENERATION EXECUTION SCREEN
+
+When the user clicks "Generate Timetable", submit the configuration to the existing backend.
+
+If generation is asynchronous, display a live progress panel.
+
+Show:
+
+- Current job status.
+- Number of required sessions.
+- Number of sessions assigned.
+- Number of sessions remaining.
+- Current validation status.
+- Elapsed time.
+- Current best candidate score, if supported.
+- Diagnostic warnings.
+
+Allow cancellation if the backend supports safe cancellation.
+
+Do not let users submit duplicate generation jobs accidentally.
+
+Use the application's existing job system and progress-update mechanism.
+
+If the application already uses WebSockets or another real-time channel, reuse it.
+
+Do not create a separate job architecture unnecessarily.
+
+---
+
+# 10. RESULTS AND TIMETABLE PREVIEW
+
+After generation, open a review screen.
+
+Display:
+
+- Weekly timetable grid.
+- Section selector.
+- Shift selector.
+- Teacher view.
+- Room view.
+- Daily summary.
+- Conflict and warning panel.
+- Unscheduled-session list.
+- Timetable quality metrics.
+
+Each timetable cell should show:
+
+- Subject.
+- Teacher.
+- Room.
+- Time.
+- Session type.
+
+Use clear visual indicators for labs, fixed sessions, and warnings.
+
+Clicking a cell should open the session details.
+
+Provide filters for:
+
+- Teacher.
+- Room.
+- Subject.
+- Section.
+- Day.
+- Conflict status.
+
+## Candidate comparison
+
+When multiple candidates exist, allow the administrator to compare them.
+
+Display:
+
+- Completeness.
+- Hard-constraint validation.
+- Teacher workload balance.
+- Student idle gaps.
+- Teacher idle gaps.
+- Room utilization.
+- Room changes.
+- Soft-constraint satisfaction.
+- Changes from the existing timetable.
+
+Only display metrics actually calculated by the backend.
+
+---
+
+# 11. MANUAL REPAIR
+
+Allow authorized users to move an individual session in the generated draft.
+
+When moving a session, immediately validate:
+
+- Teacher availability.
+- Teacher double-booking.
+- Section double-booking.
+- Room availability.
+- Room compatibility.
+- Shift restrictions.
+- Session duration.
+- Lab continuity.
+
+Show a clear explanation if the move is invalid.
+
+If a manual change causes another assignment to become invalid, explain the dependency and offer a repair action.
+
+Never silently move unrelated sessions without informing the administrator.
+
+Record manual changes in the audit log.
+
+---
+
+# 12. PUBLISHING AND VERSION CONTROL
+
+Keep generation, validation, and publication separate.
+
+The workflow must be:
+
+Configure → Validate → Generate → Review → Validate Again → Publish.
+
+Before publication:
+
+- Confirm all required sessions are scheduled.
+- Confirm all hard constraints are satisfied.
+- Confirm no blocking warnings remain.
+- Show the difference from the currently published timetable.
+- Ask for confirmation.
+
+Allow authorized users to publish only validated, complete schedules unless the institution explicitly supports an approved exception workflow.
+
+Store:
+
+- Timetable version.
+- Generation configuration.
+- Candidate identifier.
+- Generation timestamp.
+- Validation results.
+- Publishing user.
+- Approval details, if applicable.
+- Change history.
+
+Support rollback to a previous published version.
+
+Never delete a published timetable merely to clear a draft.
+
+---
+
+# 13. DATABASE AND BACKEND INTEGRATION
+
+Before implementing, inspect the current TRD and actual database schema.
+
+Reuse existing tables and endpoints wherever possible.
+
+The existing system already models concepts such as:
+
+- Teachers.
+- Subjects.
+- Teacher-subject assignments.
+- Shifts.
+- Sections.
+- Rooms.
+- Time slots.
+- Timetables.
+- Timetable details.
+- Teacher availability.
+- Approved leave.
+- Teacher-subject-shift locks.
+
+Do not duplicate these entities.
+
+Determine which additional data structures are genuinely necessary for:
+
+- Generation configurations.
+- Reusable constraint profiles.
+- Generation jobs.
+- Candidate timetables.
+- Generation metrics.
+- Unscheduled-session diagnostics.
+- Teacher preferences.
+- Subject scheduling requirements.
+- Timetable versions and audit history.
+
+Only add tables when the existing schema cannot support the required behavior cleanly.
+
+Use migrations consistent with the existing project.
+
+All configuration controls must be connected to real API requests and persisted data.
+
+Do not implement fake front-end-only constraints.
+
+Do not fabricate teacher availability, room capacity, subject frequency, or institutional policies.
+
+Where required data is missing, display a clear setup requirement and explain how to configure it.
+
+Use the existing authentication and authorization system to restrict administrative actions.
+
+Validate all generation requests on the server. The frontend must not be trusted to enforce hard constraints.
+
+---
+
+# 14. TECHNICAL IMPLEMENTATION REQUIREMENTS
+
+Follow the existing stack and conventions.
+
+The current project is expected to use React Native Expo for mobile functionality and FastAPI, SQLAlchemy, PostgreSQL, Redis, and asynchronous jobs on the backend, according to the TRD. Verify the actual repository before making changes.
+
+Requirements:
+
+- Use existing API clients and authentication.
+- Validate requests with the project's existing validation conventions.
+- Use database transactions appropriately.
+- Prevent duplicate or conflicting generation jobs.
+- Make generation operations safe to retry.
+- Maintain auditability.
+- Use loading, empty, error, and success states.
+- Handle stale timetable versions.
+- Add tests for hard constraints.
+- Add tests for incomplete configurations.
+- Add tests for infeasible scheduling scenarios.
+- Add tests for publishing restrictions.
+- Add tests for repair and version preservation.
+
+If the current scheduling algorithm is inadequate, propose and implement the smallest appropriate improvement without unnecessarily rewriting unrelated code.
+
+Do not claim that a timetable is conflict-free until the backend has independently validated it.
+
+---
+
+# 15. IMPLEMENTATION PROCESS
+
+Follow this sequence:
+
+1. Inspect the existing UI and identify the components responsible for timetable generation.
+2. Inspect the current TRD, database schema, APIs, and scheduling algorithm.
+3. Map every existing control to its actual backend behavior.
+4. Identify missing configuration fields and unsupported constraints.
+5. Present a concise implementation plan and required schema changes.
+6. Redesign the UI using the existing design system.
+7. Implement the configuration state and API integration.
+8. Implement or extend the necessary backend validation and scheduling behavior.
+9. Add automated tests.
+10. Test the complete workflow using existing development data.
+11. Report what was implemented, which migrations were added, which constraints are genuinely enforced, and which require additional data.
+
+Do not stop after creating a visual mockup.
+
+Do not replace working functionality with placeholders.
+
+Do not invent successful test results.
+
+# FINAL PRODUCT GOAL
+
+The finished product should make automated timetable generation feel like configuring a smart scheduling assistant.
+
+The administrator selects the academic scope, confirms the required teaching sessions, chooses the permitted rooms, configures constraints and priorities, and starts generation.
+
+The system handles teacher eligibility, scheduling, conflict prevention, optimization, validation, and diagnostics.
+
+The administrator then reviews the results and publishes the timetable.
+
+The interface should be visually polished, compact, understandable, and genuinely connected to the scheduling engine.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-31T01:48:34+05:30.
+</ADDITIONAL_METADATA>

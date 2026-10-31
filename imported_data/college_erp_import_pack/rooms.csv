@@ -1,0 +1,25 @@
+room_code,floor,room_type,capacity,has_projector,has_computer,is_active,notes
+G01,Ground,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+G02,Ground,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+G03,Ground,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+G04,Ground,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+G05,Ground,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+G06,Ground,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+G07,Ground,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+G08,Ground,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+101,Floor 1,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+102,Floor 1,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+103,Floor 1,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+104,Floor 1,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+105,Floor 1,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+106,Floor 1,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+107,Floor 1,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+108,Floor 1,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+201,Floor 2,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+202,Floor 2,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+203,Floor 2,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+204,Floor 2,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+205,Floor 2,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+206,Floor 2,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+207,Floor 2,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.
+208,Floor 2,Classroom,,,,True,Room naming convention confirmed by user; capacity/equipment not provided.

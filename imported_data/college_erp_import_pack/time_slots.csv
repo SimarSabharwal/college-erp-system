@@ -1,0 +1,73 @@
+slot_key,shift_name,day_of_week,start_time,end_time,slot_label,slot_order,global_order,is_teaching_slot,source,notes
+M_Mon_1,Morning,Mon,09:10,10:05,Morning period 1,1,1,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Mon_2,Morning,Mon,10:10,11:05,Morning period 2,2,2,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Mon_3,Morning,Mon,11:05,11:20,Break/non-teaching period,3,3,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Mon_4,Morning,Mon,11:20,12:15,Morning period 4,4,4,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Mon_5,Morning,Mon,12:20,13:15,Morning period 5,5,5,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Mon_6,Morning,Mon,13:20,14:15,Morning period 6,6,6,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Tue_1,Morning,Tue,09:10,10:05,Morning period 1,1,1,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Tue_2,Morning,Tue,10:10,11:05,Morning period 2,2,2,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Tue_3,Morning,Tue,11:05,11:20,Break/non-teaching period,3,3,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Tue_4,Morning,Tue,11:20,12:15,Morning period 4,4,4,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Tue_5,Morning,Tue,12:20,13:15,Morning period 5,5,5,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Tue_6,Morning,Tue,13:20,14:15,Morning period 6,6,6,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Wed_1,Morning,Wed,09:10,10:05,Morning period 1,1,1,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Wed_2,Morning,Wed,10:10,11:05,Morning period 2,2,2,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Wed_3,Morning,Wed,11:05,11:20,Break/non-teaching period,3,3,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Wed_4,Morning,Wed,11:20,12:15,Morning period 4,4,4,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Wed_5,Morning,Wed,12:20,13:15,Morning period 5,5,5,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Wed_6,Morning,Wed,13:20,14:15,Morning period 6,6,6,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Thu_1,Morning,Thu,09:10,10:05,Morning period 1,1,1,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Thu_2,Morning,Thu,10:10,11:05,Morning period 2,2,2,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Thu_3,Morning,Thu,11:05,11:20,Break/non-teaching period,3,3,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Thu_4,Morning,Thu,11:20,12:15,Morning period 4,4,4,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Thu_5,Morning,Thu,12:20,13:15,Morning period 5,5,5,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Thu_6,Morning,Thu,13:20,14:15,Morning period 6,6,6,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Fri_1,Morning,Fri,09:10,10:05,Morning period 1,1,1,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Fri_2,Morning,Fri,10:10,11:05,Morning period 2,2,2,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Fri_3,Morning,Fri,11:05,11:20,Break/non-teaching period,3,3,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Fri_4,Morning,Fri,11:20,12:15,Morning period 4,4,4,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Fri_5,Morning,Fri,12:20,13:15,Morning period 5,5,5,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Fri_6,Morning,Fri,13:20,14:15,Morning period 6,6,6,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Sat_1,Morning,Sat,09:10,10:05,Morning period 1,1,1,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Sat_2,Morning,Sat,10:10,11:05,Morning period 2,2,2,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Sat_3,Morning,Sat,11:05,11:20,Break/non-teaching period,3,3,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Sat_4,Morning,Sat,11:20,12:15,Morning period 4,4,4,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Sat_5,Morning,Sat,12:20,13:15,Morning period 5,5,5,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+M_Sat_6,Morning,Sat,13:20,14:15,Morning period 6,6,6,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Mon_1,Afternoon,Mon,12:20,13:15,Afternoon period 1,1,7,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Mon_2,Afternoon,Mon,13:20,14:15,Afternoon period 2,2,8,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Mon_3,Afternoon,Mon,14:15,15:10,Afternoon period 3,3,9,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Mon_4,Afternoon,Mon,15:10,15:35,Break/non-teaching period,4,10,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Mon_5,Afternoon,Mon,15:35,16:30,Afternoon period 5,5,11,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Mon_6,Afternoon,Mon,16:30,17:25,Afternoon period 6,6,12,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Tue_1,Afternoon,Tue,12:20,13:15,Afternoon period 1,1,7,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Tue_2,Afternoon,Tue,13:20,14:15,Afternoon period 2,2,8,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Tue_3,Afternoon,Tue,14:15,15:10,Afternoon period 3,3,9,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Tue_4,Afternoon,Tue,15:10,15:35,Break/non-teaching period,4,10,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Tue_5,Afternoon,Tue,15:35,16:30,Afternoon period 5,5,11,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Tue_6,Afternoon,Tue,16:30,17:25,Afternoon period 6,6,12,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Wed_1,Afternoon,Wed,12:20,13:15,Afternoon period 1,1,7,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Wed_2,Afternoon,Wed,13:20,14:15,Afternoon period 2,2,8,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Wed_3,Afternoon,Wed,14:15,15:10,Afternoon period 3,3,9,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Wed_4,Afternoon,Wed,15:10,15:35,Break/non-teaching period,4,10,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Wed_5,Afternoon,Wed,15:35,16:30,Afternoon period 5,5,11,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Wed_6,Afternoon,Wed,16:30,17:25,Afternoon period 6,6,12,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Thu_1,Afternoon,Thu,12:20,13:15,Afternoon period 1,1,7,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Thu_2,Afternoon,Thu,13:20,14:15,Afternoon period 2,2,8,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Thu_3,Afternoon,Thu,14:15,15:10,Afternoon period 3,3,9,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Thu_4,Afternoon,Thu,15:10,15:35,Break/non-teaching period,4,10,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Thu_5,Afternoon,Thu,15:35,16:30,Afternoon period 5,5,11,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Thu_6,Afternoon,Thu,16:30,17:25,Afternoon period 6,6,12,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Fri_1,Afternoon,Fri,12:20,13:15,Afternoon period 1,1,7,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Fri_2,Afternoon,Fri,13:20,14:15,Afternoon period 2,2,8,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Fri_3,Afternoon,Fri,14:15,15:10,Afternoon period 3,3,9,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Fri_4,Afternoon,Fri,15:10,15:35,Break/non-teaching period,4,10,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Fri_5,Afternoon,Fri,15:35,16:30,Afternoon period 5,5,11,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Fri_6,Afternoon,Fri,16:30,17:25,Afternoon period 6,6,12,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Sat_1,Afternoon,Sat,12:20,13:15,Afternoon period 1,1,7,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Sat_2,Afternoon,Sat,13:20,14:15,Afternoon period 2,2,8,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Sat_3,Afternoon,Sat,14:15,15:10,Afternoon period 3,3,9,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Sat_4,Afternoon,Sat,15:10,15:35,Break/non-teaching period,4,10,False,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Sat_5,Afternoon,Sat,15:35,16:30,Afternoon period 5,5,11,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.
+A_Sat_6,Afternoon,Sat,16:30,17:25,Afternoon period 6,6,12,True,PDF timetable dated 21.10.2026,PDF schedule times retained as printed; these differ from canonical TRD time_slots seed.

@@ -1,0 +1,15 @@
+csv_file,target_table_or_tables,key_fields,import_notes
+roles.csv,roles,role_name,Direct seed; role_id generated.
+programs.csv,programs,program_code,Map department_id if department table seeded.
+academic_years.csv,academic_years,name,Dates blank; confirm before import.
+semesters.csv,semesters,"program_id, academic_year_id, semester_no",Resolve program/year IDs.
+shifts.csv,shifts,"name, start_time, end_time",TRD constraint mismatch: Afternoon vs Evening.
+sections.csv,sections,"section_name, program_id, shift_id, academic_year_id",Resolve FK IDs; section_name=III.
+subjects.csv,subjects,"subject_code, name, program_id, semester_id, credits, subject_type, has_lab",Resolve program/semester IDs.
+teachers.csv,users + teachers,users.full_name/email/password_hash/role_id; teachers.employee_no/user_id,Email/password_hash missing; employee_no is provisional timetable code.
+teacher_subjects.csv,teacher_subjects,"teacher_id, subject_id, can_teach, priority",Resolve teacher and subject IDs using codes.
+rooms.csv,rooms,"room_code, room_type, capacity",Resolve building_id if required; capacities unknown.
+time_slots.csv,time_slots,"shift_id, day_of_week, start_time, end_time, slot_label, slot_order, global_order",slot_key staging-only; use as join key then discard.
+students.csv,users + NEW student profile/membership table,"ERP, PRN, section, shift, semester",TRD has no student profile table; do not force these into users without schema decision.
+timetable_entries.csv,timetables + timetable_details,"section_id, subject_id, teacher_id, room_id, slot_id, class_type, is_lab",Create parent timetables row; resolve all foreign keys.
+student_internal_marks.csv,NEW assessment/marks tables,"student, subject, exam, marks, attendance status",TRD currently has no marks/assessment table.

@@ -1,0 +1,9 @@
+subject_code,name,program_code,semester_no,credits,subject_type,has_lab,theory_hours_per_week,lab_hours_per_week,is_active,teacher_mapping_as_source,notes
+OS,Operating Systems,BCA,3,3,Theory,False,,,True,MAG (Morning); DSB (Afternoon),Hours per week not explicitly stated in source.
+SE,Software Engineering,BCA,3,3,Theory,False,,,True,DSB (Morning); MAG (Afternoon),Hours per week not explicitly stated in source.
+JP,Java Programming,BCA,3,3,Theory,False,,,True,MGS (Morning); NPN (Afternoon),Hours per week not explicitly stated in source.
+ST,Statistics,BCA,3,3,Theory,False,,,True,UG (Morning); YK (Afternoon),Hours per week not explicitly stated in source.
+SUM,Start-up Management,BCA,3,2,Theory,False,,,True,AK (both shifts),Hours per week not explicitly stated in source.
+ORACLE_LAB,Lab on Oracle,BCA,3,2,Lab,True,,,True,MKC (both shifts),Hours per week not explicitly stated in source.
+JAVA_LAB,Lab on Java,BCA,3,2,Lab,True,,,True,MGS (Morning); NPN (Afternoon),Hours per week not explicitly stated in source.
+YOGA,Yoga & Meditation,BCA,3,2,Theory,False,,,True,AK / AKR; schedule lists both codes in faculty tables,Hours per week not explicitly stated in source.

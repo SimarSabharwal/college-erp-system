@@ -1,0 +1,2 @@
+program_code,name,department_name,duration_years,total_semesters,is_active,notes
+BCA,Bachelor of Computer Applications,Computer Applications / BCA (provisional),3,6,True,"Duration/semester count are common BCA defaults, not specified on uploaded timetable; confirm before import."

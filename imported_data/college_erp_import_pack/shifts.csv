@@ -1,0 +1,3 @@
+shift_name,start_time,end_time,source,schema_note
+Morning,09:10,14:15,"BCA III (MORNING) timetable, page 1",TRD shift table only allows Morning/Evening; rename Evening to Afternoon or alter constraint before import.
+Afternoon,12:20,17:25,"BCA III (AFTERNOON) timetable, page 2",TRD shift table only allows Morning/Evening; Afternoon is the source label.
