@@ -35,7 +35,7 @@ from app.services.timetable_generator import TimetableGenerator
 router = APIRouter(prefix="/timetable", tags=["Timetable Engine"])
 
 
-def map_detail_to_response(d: TimetableDetail) -> TimetableDetailResponse:
+def map_detail_to_response(d: TimetableDetail, db: Optional[Session] = None) -> TimetableDetailResponse:
     start_d = d.timetable.active_from if (d.timetable and d.timetable.active_from) else date(2026, 11, 2)
     end_d = d.timetable.active_to if (d.timetable and d.timetable.active_to) else (start_d + timedelta(days=4))
     day_name = d.slot.day_of_week if d.slot else "Mon"
@@ -56,6 +56,24 @@ def map_detail_to_response(d: TimetableDetail) -> TimetableDetailResponse:
 
     formatted_date_str = sess_date.strftime("%a, %d %b")
 
+    sub_id = None
+    sub_name = None
+    is_reassigned = False
+    orig_teacher_name = d.teacher.user.full_name if (d.teacher and d.teacher.user) else ""
+    eff_teacher_name = orig_teacher_name
+
+    if db and sess_date:
+        cs = db.query(ClassSession).filter_by(
+            timetable_id=d.timetable_id,
+            detail_id=d.detail_id,
+            session_date=sess_date,
+        ).first()
+        if cs and cs.substitute_teacher_id:
+            sub_id = cs.substitute_teacher_id
+            sub_name = cs.substitute_teacher.user.full_name if (cs.substitute_teacher and cs.substitute_teacher.user) else None
+            is_reassigned = True
+            eff_teacher_name = sub_name or orig_teacher_name
+
     return TimetableDetailResponse(
         detail_id=d.detail_id,
         timetable_id=d.timetable_id,
@@ -65,7 +83,11 @@ def map_detail_to_response(d: TimetableDetail) -> TimetableDetailResponse:
         subject_code=d.subject.subject_code if d.subject else "",
         subject_name=d.subject.name if d.subject else "",
         teacher_id=d.teacher_id,
-        teacher_name=d.teacher.user.full_name if (d.teacher and d.teacher.user) else "",
+        teacher_name=orig_teacher_name,
+        substitute_teacher_id=sub_id,
+        substitute_teacher_name=sub_name,
+        is_reassigned=is_reassigned,
+        effective_teacher_name=eff_teacher_name,
         room_id=d.room_id,
         room_code=d.room.room_code if d.room else "",
         slot_id=d.slot_id,
@@ -366,7 +388,7 @@ def get_section_week_timetable(section_id: int, db: Session = Depends(get_db)):
         )
         .all()
     )
-    return [map_detail_to_response(d) for d in details]
+    return [map_detail_to_response(d, db=db) for d in details]
 
 
 @router.get("/teacher/{teacher_id}/week", response_model=List[TimetableDetailResponse])
@@ -388,30 +410,136 @@ def get_teacher_week_timetable(teacher_id: int, db: Session = Depends(get_db)):
         )
         .all()
     )
-    return [map_detail_to_response(d) for d in details]
+    return [map_detail_to_response(d, db=db) for d in details]
+
+
+def ensure_class_sessions_for_date(db: Session, target_date: date, tt: Timetable) -> List[ClassSession]:
+    """
+    Guarantees that real, persistent ClassSession records exist for the specified date.
+    Syncs missing sessions from the active timetable details for that weekday.
+    """
+    weekday_str = target_date.strftime("%a")
+    details = (
+        db.query(TimetableDetail)
+        .filter(TimetableDetail.timetable_id == tt.timetable_id)
+        .join(TimeSlot)
+        .filter(TimeSlot.day_of_week == weekday_str)
+        .all()
+    )
+    created = []
+    for d in details:
+        existing = db.query(ClassSession).filter_by(
+            timetable_id=tt.timetable_id,
+            detail_id=d.detail_id,
+            session_date=target_date,
+        ).first()
+        if not existing:
+            cs = ClassSession(
+                timetable_id=tt.timetable_id,
+                detail_id=d.detail_id,
+                section_id=d.section_id,
+                subject_id=d.subject_id,
+                teacher_id=d.teacher_id,
+                room_id=d.room_id,
+                slot_id=d.slot_id,
+                is_lab=d.is_lab,
+                session_date=target_date,
+                week_type="Regular",
+                status="Scheduled",
+            )
+            db.add(cs)
+            created.append(cs)
+    if created:
+        db.commit()
+    return created
 
 
 def compute_session_status(
-    s: ClassSession, target_d: date, sim_time: str, db: Session
-) -> tuple[str, bool]:
+    s: ClassSession,
+    target_d: date,
+    sim_time: str,
+    db: Session,
+    viewer_teacher_id: Optional[int] = None,
+) -> tuple[str, bool, bool, Optional[str], int]:
+    """
+    Computes strict lifecycle status, attendance locking, and role-based permissions.
+    Returns:
+      (status_str, can_mark_attendance, is_attendance_locked, lock_reason, att_count)
+    """
     att_count = db.query(Attendance).filter_by(session_id=s.session_id).count()
-    if att_count > 0:
-        return ("Completed", True)
+    start_str = s.slot.start_time.strftime("%H:%M") if s.slot else "09:00"
+    end_str = s.slot.end_time.strftime("%H:%M") if s.slot else "10:00"
 
-    today_d = date.today()
-    if target_d < today_d:
-        return ("Completed", True)
-    elif target_d > today_d and target_d != date(2026, 11, 2):
-        return ("Upcoming", False)
-    else:
-        start_str = s.slot.start_time.strftime("%H:%M") if s.slot else "09:00"
-        end_str = s.slot.end_time.strftime("%H:%M") if s.slot else "10:00"
-        if sim_time < start_str:
-            return ("Upcoming", False)
-        elif start_str <= sim_time <= end_str:
-            return ("Ongoing", True)
+    is_today = (target_d == date.today())
+    if not is_today:
+        if target_d < date.today():
+            lifecycle = "Completed"
         else:
-            return ("Completed", True)
+            lifecycle = "Upcoming"
+    else:
+        if sim_time < start_str:
+            lifecycle = "Upcoming"
+        elif start_str <= sim_time <= end_str:
+            lifecycle = "Ongoing"
+        else:
+            lifecycle = "Completed"
+
+    # Reassignment checks
+    is_reassigned_away = False
+    is_substitute_for_viewer = False
+    sub_name = (
+        s.substitute_teacher.user.full_name
+        if (s.substitute_teacher and s.substitute_teacher.user)
+        else None
+    )
+
+    if s.substitute_teacher_id:
+        if viewer_teacher_id:
+            if s.teacher_id == viewer_teacher_id and s.substitute_teacher_id != viewer_teacher_id:
+                is_reassigned_away = True
+            elif s.substitute_teacher_id == viewer_teacher_id:
+                is_substitute_for_viewer = True
+
+    # Lock logic
+    if is_reassigned_away:
+        can_mark = False
+        is_locked = True
+        lock_reason = f"Reassigned to Prof. {sub_name}. Only the substitute faculty can record attendance."
+        stat = "Transferred" if s.status == "Transferred" else "Reassigned"
+    elif not is_today:
+        can_mark = False
+        is_locked = True
+        lock_reason = f"Attendance locked: Session is scheduled on {target_d.strftime('%a, %d %b %Y')}. Attendance can only be recorded on that exact date."
+        stat = lifecycle
+    elif lifecycle == "Upcoming":
+        can_mark = False
+        is_locked = True
+        lock_reason = f"Attendance locked: Session begins at {start_str}. Opens strictly when class starts."
+        stat = "Upcoming"
+    elif lifecycle == "Ongoing":
+        if att_count > 0:
+            can_mark = True
+            is_locked = False
+            lock_reason = f"Attendance recorded ({att_count} marked). You can update it until {end_str}."
+            stat = "Ongoing"
+        else:
+            can_mark = True
+            is_locked = False
+            lock_reason = None
+            stat = "Ongoing"
+    else:  # lifecycle == "Completed"
+        if att_count > 0:
+            can_mark = False
+            is_locked = True
+            lock_reason = f"Attendance recorded ({att_count} marked). Session window completed."
+            stat = "Completed"
+        else:
+            can_mark = False
+            is_locked = True
+            lock_reason = f"Attendance window closed at {end_str}. Lectures can only be marked during their scheduled time slot."
+            stat = "Completed"
+
+    return (stat, can_mark, is_locked, lock_reason, att_count)
 
 
 @router.get("/student/today", response_model=List[ClassSessionResponse])
@@ -427,13 +555,10 @@ def get_student_today_classes(
 
     today_d = date.today()
     if not target_date:
-        if today_d.weekday() in (5, 6):
-            target_date = date(2026, 11, 2)
-        else:
-            target_date = today_d
+        target_date = today_d
 
     if not simulated_time:
-        simulated_time = "10:15" if target_date == date(2026, 11, 2) else datetime.now().strftime("%H:%M")
+        simulated_time = datetime.now().strftime("%H:%M")
 
     active_tt = (
         db.query(Timetable)
@@ -441,6 +566,11 @@ def get_student_today_classes(
         .order_by(Timetable.timetable_id.desc())
         .first()
     )
+    if not active_tt:
+        active_tt = db.query(Timetable).order_by(Timetable.timetable_id.desc()).first()
+
+    if active_tt:
+        ensure_class_sessions_for_date(db, target_date, active_tt)
 
     query = db.query(ClassSession).filter(
         ClassSession.section_id == student.section_id,
@@ -458,59 +588,18 @@ def get_student_today_classes(
             seen_slots.add(s.slot_id)
             sessions.append(s)
 
-    if not sessions:
-        weekday_str = target_date.strftime("%a")
-        target_tt = active_tt or db.query(Timetable).order_by(Timetable.timetable_id.desc()).first()
-        if not target_tt:
-            return []
-
-        details = (
-            db.query(TimetableDetail)
-            .filter(
-                TimetableDetail.timetable_id == target_tt.timetable_id,
-                TimetableDetail.section_id == student.section_id,
-            )
-            .join(TimeSlot)
-            .filter(TimeSlot.day_of_week == weekday_str)
-            .order_by(TimeSlot.global_order)
-            .all()
-        )
-        seen_detail_slots = set()
-        res = []
-        for d in details:
-            if d.slot_id in seen_detail_slots:
-                continue
-            seen_detail_slots.add(d.slot_id)
-            start_str = d.slot.start_time.strftime("%H:%M") if d.slot else "09:00"
-            end_str = d.slot.end_time.strftime("%H:%M") if d.slot else "10:00"
-            stat = "Ongoing" if start_str <= simulated_time <= end_str else ("Upcoming" if simulated_time < start_str else "Completed")
-            res.append(
-                ClassSessionResponse(
-                    session_id=d.detail_id,
-                    section_id=d.section_id,
-                    section_name=d.section.section_name if d.section else "",
-                    subject_id=d.subject_id,
-                    subject_code=d.subject.subject_code if d.subject else "",
-                    subject_name=d.subject.name if d.subject else "",
-                    teacher_id=d.teacher_id,
-                    teacher_name=d.teacher.user.full_name if (d.teacher and d.teacher.user) else "",
-                    room_id=d.room_id,
-                    room_code=d.room.room_code if d.room else "",
-                    slot_id=d.slot_id,
-                    start_time=start_str,
-                    end_time=end_str,
-                    session_date=target_date,
-                    status=stat,
-                    is_lab=d.is_lab,
-                    can_mark_attendance=(stat in ("Ongoing", "Completed")),
-                )
-            )
-        return res
-
     res = []
     for s in sessions:
         sub_name = s.substitute_teacher.user.full_name if (s.substitute_teacher and s.substitute_teacher.user) else None
-        stat, can_mark = compute_session_status(s, target_date, simulated_time, db)
+        orig_name = s.teacher.user.full_name if (s.teacher and s.teacher.user) else "Faculty"
+        is_reassigned = bool(s.substitute_teacher_id)
+        effective_t_id = s.substitute_teacher_id if is_reassigned else s.teacher_id
+        effective_t_name = sub_name if is_reassigned else orig_name
+        reassign_type = "Faculty Leave Coverage" if s.leave_request_id else ("Peer Transfer" if s.status == "Transferred" else None)
+
+        stat, can_mark, is_locked, lock_reason, att_count = compute_session_status(
+            s, target_date, simulated_time, db, viewer_teacher_id=None
+        )
         att = db.query(Attendance).filter_by(session_id=s.session_id, student_id=student.student_id).first()
         my_status = att.status if att else None
         my_rem = att.remarks if att else None
@@ -524,9 +613,13 @@ def get_student_today_classes(
                 subject_code=s.subject.subject_code if s.subject else "",
                 subject_name=s.subject.name if s.subject else "",
                 teacher_id=s.teacher_id,
-                teacher_name=s.teacher.user.full_name if (s.teacher and s.teacher.user) else "",
+                teacher_name=orig_name,
                 substitute_teacher_id=s.substitute_teacher_id,
                 substitute_teacher_name=sub_name,
+                is_reassigned=is_reassigned,
+                reassignment_type=reassign_type,
+                effective_teacher_id=effective_t_id,
+                effective_teacher_name=effective_t_name,
                 room_id=s.room_id,
                 room_code=s.room.room_code if s.room else "",
                 slot_id=s.slot_id,
@@ -535,7 +628,11 @@ def get_student_today_classes(
                 session_date=s.session_date,
                 status=stat,
                 is_lab=s.is_lab,
-                can_mark_attendance=can_mark,
+                can_mark_attendance=False,
+                is_attendance_locked=True,
+                lock_reason=lock_reason,
+                attendance_marked=(att_count > 0),
+                attendance_count=att_count,
                 my_attendance_status=my_status,
                 my_remarks=my_rem,
             )
@@ -556,13 +653,10 @@ def get_teacher_today_classes(
 
     today_d = date.today()
     if not target_date:
-        if today_d.weekday() in (5, 6):
-            target_date = date(2026, 11, 2)
-        else:
-            target_date = today_d
+        target_date = today_d
 
     if not simulated_time:
-        simulated_time = "10:15" if target_date == date(2026, 11, 2) else datetime.now().strftime("%H:%M")
+        simulated_time = datetime.now().strftime("%H:%M")
 
     active_tt = (
         db.query(Timetable)
@@ -570,6 +664,11 @@ def get_teacher_today_classes(
         .order_by(Timetable.timetable_id.desc())
         .first()
     )
+    if not active_tt:
+        active_tt = db.query(Timetable).order_by(Timetable.timetable_id.desc()).first()
+
+    if active_tt:
+        ensure_class_sessions_for_date(db, target_date, active_tt)
 
     t_query = db.query(ClassSession).filter(
         (ClassSession.teacher_id == teacher.teacher_id) | (ClassSession.substitute_teacher_id == teacher.teacher_id),
@@ -587,59 +686,19 @@ def get_teacher_today_classes(
             seen_t_slots.add(s.slot_id)
             sessions.append(s)
 
-    if not sessions:
-        weekday_str = target_date.strftime("%a")
-        target_tt = active_tt or db.query(Timetable).order_by(Timetable.timetable_id.desc()).first()
-        if not target_tt:
-            return []
-
-        details = (
-            db.query(TimetableDetail)
-            .filter(
-                TimetableDetail.timetable_id == target_tt.timetable_id,
-                TimetableDetail.teacher_id == teacher.teacher_id,
-            )
-            .join(TimeSlot)
-            .filter(TimeSlot.day_of_week == weekday_str)
-            .order_by(TimeSlot.global_order)
-            .all()
-        )
-        seen_t_detail_slots = set()
-        res = []
-        for d in details:
-            if d.slot_id in seen_t_detail_slots:
-                continue
-            seen_t_detail_slots.add(d.slot_id)
-            start_str = d.slot.start_time.strftime("%H:%M") if d.slot else "09:00"
-            end_str = d.slot.end_time.strftime("%H:%M") if d.slot else "10:00"
-            stat = "Ongoing" if start_str <= simulated_time <= end_str else ("Upcoming" if simulated_time < start_str else "Completed")
-            res.append(
-                ClassSessionResponse(
-                    session_id=d.detail_id,
-                    section_id=d.section_id,
-                    section_name=d.section.section_name if d.section else "",
-                    subject_id=d.subject_id,
-                    subject_code=d.subject.subject_code if d.subject else "",
-                    subject_name=d.subject.name if d.subject else "",
-                    teacher_id=d.teacher_id,
-                    teacher_name=d.teacher.user.full_name if (d.teacher and d.teacher.user) else "",
-                    room_id=d.room_id,
-                    room_code=d.room.room_code if d.room else "",
-                    slot_id=d.slot_id,
-                    start_time=start_str,
-                    end_time=end_str,
-                    session_date=target_date,
-                    status=stat,
-                    is_lab=d.is_lab,
-                    can_mark_attendance=(stat in ("Ongoing", "Completed")),
-                )
-            )
-        return res
-
     res = []
     for s in sessions:
         sub_name = s.substitute_teacher.user.full_name if (s.substitute_teacher and s.substitute_teacher.user) else None
-        stat, can_mark = compute_session_status(s, target_date, simulated_time, db)
+        orig_name = s.teacher.user.full_name if (s.teacher and s.teacher.user) else "Faculty"
+        is_reassigned = bool(s.substitute_teacher_id)
+        effective_t_id = s.substitute_teacher_id if is_reassigned else s.teacher_id
+        effective_t_name = sub_name if is_reassigned else orig_name
+        reassign_type = "Faculty Leave Coverage" if s.leave_request_id else ("Peer Transfer" if s.status == "Transferred" else None)
+
+        stat, can_mark, is_locked, lock_reason, att_count = compute_session_status(
+            s, target_date, simulated_time, db, viewer_teacher_id=teacher.teacher_id
+        )
+
         res.append(
             ClassSessionResponse(
                 session_id=s.session_id,
@@ -649,9 +708,13 @@ def get_teacher_today_classes(
                 subject_code=s.subject.subject_code if s.subject else "",
                 subject_name=s.subject.name if s.subject else "",
                 teacher_id=s.teacher_id,
-                teacher_name=s.teacher.user.full_name if (s.teacher and s.teacher.user) else "",
+                teacher_name=orig_name,
                 substitute_teacher_id=s.substitute_teacher_id,
                 substitute_teacher_name=sub_name,
+                is_reassigned=is_reassigned,
+                reassignment_type=reassign_type,
+                effective_teacher_id=effective_t_id,
+                effective_teacher_name=effective_t_name,
                 room_id=s.room_id,
                 room_code=s.room.room_code if s.room else "",
                 slot_id=s.slot_id,
@@ -661,6 +724,10 @@ def get_teacher_today_classes(
                 status=stat,
                 is_lab=s.is_lab,
                 can_mark_attendance=can_mark,
+                is_attendance_locked=is_locked,
+                lock_reason=lock_reason,
+                attendance_marked=(att_count > 0),
+                attendance_count=att_count,
                 my_attendance_status=None,
                 my_remarks=None,
             )

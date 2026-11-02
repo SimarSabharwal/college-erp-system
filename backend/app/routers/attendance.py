@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
-from datetime import datetime, timezone
+from typing import List, Optional
+from datetime import datetime, timezone, date, timedelta
 import math
 
 from app.core.database import get_db
@@ -30,6 +30,8 @@ router = APIRouter(prefix="/attendance", tags=["Student Attendance"])
 @router.get("/session/{session_id}/roster", response_model=SessionRosterResponse)
 def get_session_roster(
     session_id: int,
+    simulated_time: Optional[str] = None,
+    target_date: Optional[date] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -39,14 +41,16 @@ def get_session_roster(
         from app.models.scheduling import TimetableDetail
         detail = db.query(TimetableDetail).filter_by(detail_id=session_id).first()
         if detail:
+            sess_d = target_date or date.today()
             session = ClassSession(
                 timetable_id=detail.timetable_id,
+                detail_id=detail.detail_id,
                 section_id=detail.section_id,
                 subject_id=detail.subject_id,
                 teacher_id=detail.teacher_id,
                 room_id=detail.room_id,
                 slot_id=detail.slot_id,
-                session_date=date.today(),
+                session_date=sess_d,
                 status="Scheduled",
             )
             db.add(session)
@@ -99,6 +103,58 @@ def get_session_roster(
 
     is_marked = len(existing_attendance) > 0
 
+    # Determine timing lock state
+    teacher_name = session.teacher.user.full_name if (session.teacher and session.teacher.user) else "Faculty"
+    sub_name = (
+        session.substitute_teacher.user.full_name
+        if (session.substitute_teacher and session.substitute_teacher.user)
+        else None
+    )
+    is_reassigned = bool(session.substitute_teacher_id)
+    effective_name = sub_name if is_reassigned else teacher_name
+
+    current_d = target_date or date.today()
+    start_str = session.slot.start_time.strftime("%H:%M") if session.slot else "09:00"
+    end_str = session.slot.end_time.strftime("%H:%M") if session.slot else "10:00"
+    curr_t_str = simulated_time or datetime.now().strftime("%H:%M")
+
+    can_mark = True
+    is_locked = False
+    lock_reason = None
+
+    # Teacher identity check
+    user_teacher = current_user.teacher_profile
+    if user_teacher:
+        assigned_id = session.substitute_teacher_id or session.teacher_id
+        if is_reassigned and session.teacher_id == user_teacher.teacher_id and session.substitute_teacher_id != user_teacher.teacher_id:
+            can_mark = False
+            is_locked = True
+            lock_reason = f"This class was reassigned to Prof. {sub_name}. Attendance must be taken by substitute faculty."
+        elif assigned_id != user_teacher.teacher_id and current_user.role and current_user.role.role_name not in ("Admin", "Principal"):
+            can_mark = False
+            is_locked = True
+            lock_reason = "You are not the designated faculty for this class session."
+
+    if not is_locked:
+        if session.session_date != current_d:
+            can_mark = False
+            is_locked = True
+            lock_reason = f"Attendance locked: Session is scheduled on {session.session_date.strftime('%a, %d %b %Y')}. Attendance can only be recorded on that exact date."
+        elif curr_t_str < start_str:
+            can_mark = False
+            is_locked = True
+            lock_reason = f"Attendance locked: Session begins at {start_str}. Opens strictly when class starts."
+        elif curr_t_str > end_str:
+            if not is_marked:
+                can_mark = False
+                is_locked = True
+                lock_reason = f"Attendance window closed at {end_str}. Attendance can only be taken during the lecture slot."
+            else:
+                # Already marked, allow viewing but flag as completed
+                can_mark = True
+                is_locked = False
+                lock_reason = f"Attendance already recorded ({len(existing_attendance)} marked)."
+
     return SessionRosterResponse(
         session_id=session.session_id,
         session_date=session.session_date,
@@ -107,14 +163,21 @@ def get_session_roster(
         subject_code=session.subject.subject_code if session.subject else "",
         section_name=session.section.section_name if session.section else "",
         room_code=session.room.room_code if session.room else "",
-        start_time=session.slot.start_time.strftime("%H:%M") if session.slot else "",
-        end_time=session.slot.end_time.strftime("%H:%M") if session.slot else "",
+        start_time=start_str,
+        end_time=end_str,
         is_marked=is_marked,
         total_students=len(students),
         present_count=present_cnt,
         absent_count=absent_cnt,
         late_count=late_cnt,
         students=student_roster,
+        can_mark=can_mark,
+        is_locked=is_locked,
+        lock_reason=lock_reason,
+        teacher_name=teacher_name,
+        substitute_teacher_name=sub_name,
+        effective_teacher_name=effective_name,
+        is_reassigned=is_reassigned,
     )
 
 
@@ -122,23 +185,26 @@ def get_session_roster(
 def submit_session_attendance(
     session_id: int,
     payload: SessionAttendanceSubmitRequest,
+    simulated_time: Optional[str] = None,
+    target_date: Optional[date] = None,
     current_user: User = Depends(require_roles("Teacher", "HOD", "Admin", "Principal")),
     db: Session = Depends(get_db),
 ):
     session = db.query(ClassSession).filter_by(session_id=session_id).first()
     if not session:
-        # Graceful fallback: check if session_id corresponds to a TimetableDetail
         from app.models.scheduling import TimetableDetail
         detail = db.query(TimetableDetail).filter_by(detail_id=session_id).first()
         if detail:
+            sess_d = target_date or date.today()
             session = ClassSession(
                 timetable_id=detail.timetable_id,
+                detail_id=detail.detail_id,
                 section_id=detail.section_id,
                 subject_id=detail.subject_id,
                 teacher_id=detail.teacher_id,
                 room_id=detail.room_id,
                 slot_id=detail.slot_id,
-                session_date=date.today(),
+                session_date=sess_d,
                 status="Scheduled",
             )
             db.add(session)
@@ -147,14 +213,56 @@ def submit_session_attendance(
         else:
             raise HTTPException(status_code=404, detail="Class session not found")
 
-    # If user is Teacher, verify they are teacher_id or substitute_teacher_id
-    if current_user.role and current_user.role.role_name == "Teacher":
-        teacher = current_user.teacher_profile
-        if not teacher:
-            raise HTTPException(status_code=403, detail="Teacher profile not found")
+    teacher = current_user.teacher_profile
+    user_role = current_user.role.role_name if current_user.role else ""
+
+    # Verify assigned faculty (for Teachers & HODs acting as faculty)
+    if user_role in ("Teacher", "HOD") and teacher:
         assigned_id = session.substitute_teacher_id or session.teacher_id
-        if assigned_id != teacher.teacher_id:
+        if session.substitute_teacher_id and session.teacher_id == teacher.teacher_id and session.substitute_teacher_id != teacher.teacher_id:
+            sub_name = (
+                session.substitute_teacher.user.full_name
+                if (session.substitute_teacher and session.substitute_teacher.user)
+                else "the assigned substitute"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Attendance locked: This lecture has been reassigned to Prof. {sub_name}. Only the substitute faculty can mark attendance."
+            )
+        if assigned_id != teacher.teacher_id and user_role == "Teacher":
             raise HTTPException(status_code=403, detail="You can only mark attendance for your assigned class sessions")
+
+    # STRICT DATE LOCK
+    # Attendance can only be recorded on the scheduled date
+    current_d = target_date or date.today()
+    if session.session_date != current_d:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Attendance locked: Attendance can ONLY be recorded on the scheduled date ({session.session_date.strftime('%a, %d %b %Y')}). Today is {current_d.strftime('%a, %d %b %Y')}."
+        )
+
+    # STRICT TIME PERIOD LOCK
+    # Attendance can only be recorded during the slot time window
+    if session.slot:
+        start_str = session.slot.start_time.strftime("%H:%M")
+        end_str = session.slot.end_time.strftime("%H:%M")
+        curr_t_str = simulated_time or datetime.now().strftime("%H:%M")
+
+        # 1. Reject if before start time
+        if curr_t_str < start_str:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Attendance locked: Lecture has not started yet. Attendance opens strictly at {start_str} (Scheduled: {start_str} - {end_str})."
+            )
+
+        # 2. Reject if after end time + 15 min wrap-up grace
+        end_dt = datetime.strptime(end_str, "%H:%M") + timedelta(minutes=15)
+        end_limit_str = end_dt.strftime("%H:%M")
+        if curr_t_str > end_limit_str:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Attendance locked: Lecture slot ended at {end_str}. Attendance can only be recorded during that exact date and time window."
+            )
 
     now = datetime.now(timezone.utc)
     present_cnt = 0

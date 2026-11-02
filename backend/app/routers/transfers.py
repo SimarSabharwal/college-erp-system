@@ -36,7 +36,7 @@ def get_eligible_substitutes(
 @router.post("/", response_model=TransferResponse)
 def execute_transfer(
     payload: TransferRequest,
-    current_user: User = Depends(require_roles("Teacher")),
+    current_user: User = Depends(require_roles("Teacher", "HOD")),
     db: Session = Depends(get_db),
 ):
     teacher = current_user.teacher_profile

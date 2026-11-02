@@ -16,6 +16,7 @@ import {
   Send,
   Trash2,
   Save,
+  Lock,
 } from "lucide-react";
 
 interface ClassSessionItem {
@@ -23,11 +24,24 @@ interface ClassSessionItem {
   section_name: string;
   subject_code: string;
   subject_name: string;
+  teacher_id?: number;
+  teacher_name?: string;
+  substitute_teacher_id?: number | null;
+  substitute_teacher_name?: string | null;
+  is_reassigned?: boolean;
+  reassignment_type?: string | null;
+  effective_teacher_id?: number;
+  effective_teacher_name?: string;
   room_code: string;
   start_time: string;
   end_time: string;
   status: string;
   is_lab: boolean;
+  can_mark_attendance?: boolean;
+  is_attendance_locked?: boolean;
+  lock_reason?: string | null;
+  attendance_marked?: boolean;
+  attendance_count?: number;
 }
 
 interface CandidateSubstitute {
@@ -91,8 +105,21 @@ export const TeacherDashboard: React.FC = () => {
   const { user } = useAuth();
   const [classes, setClasses] = useState<ClassSessionItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string>("2026-11-02");
-  const [simulatedTime] = useState<string>("10:15");
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [currentTimeStr, setCurrentTimeStr] = useState<string>(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  });
+
+  // Ticking live clock
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const d = new Date();
+      setCurrentTimeStr(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Transfer Modal State
   const [transferModalOpen, setTransferModalOpen] = useState(false);
@@ -106,14 +133,23 @@ export const TeacherDashboard: React.FC = () => {
   // Leave Modal State
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [leaveType, setLeaveType] = useState("Casual");
-  const [startDate, setStartDate] = useState("2026-11-02");
-  const [endDate, setEndDate] = useState("2026-11-03");
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
   const [leaveReason, setLeaveReason] = useState("");
   const [submittingLeave, setSubmittingLeave] = useState(false);
 
   // Attendance Modal State
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [attendanceSession, setAttendanceSession] = useState<ClassSessionItem | null>(null);
+  const [rosterMeta, setRosterMeta] = useState<{
+    can_mark: boolean;
+    is_locked: boolean;
+    lock_reason?: string | null;
+    teacher_name?: string | null;
+    substitute_teacher_name?: string | null;
+    effective_teacher_name?: string | null;
+    is_reassigned?: boolean;
+  } | null>(null);
   const [roster, setRoster] = useState<RosterStudent[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [submittingAttendance, setSubmittingAttendance] = useState(false);
@@ -127,7 +163,7 @@ export const TeacherDashboard: React.FC = () => {
   const fetchTeacherSchedule = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/timetable/teacher/today?target_date=${selectedDate}&simulated_time=${simulatedTime}`);
+      const res = await api.get(`/timetable/teacher/today?target_date=${selectedDate}&simulated_time=${currentTimeStr}`);
       setClasses(res.data);
     } catch (err) {
       console.error("Failed to load teacher schedule", err);
@@ -152,7 +188,15 @@ export const TeacherDashboard: React.FC = () => {
   useEffect(() => {
     fetchTeacherSchedule();
     fetchWorkflows();
-  }, [selectedDate]);
+  }, [selectedDate, currentTimeStr]);
+
+  // Polling every 5s to refresh schedule and workflows
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchTeacherSchedule();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [selectedDate, currentTimeStr]);
 
   // Open transfer modal for a specific session
   const openTransferModal = async (session: ClassSessionItem) => {
@@ -180,8 +224,18 @@ export const TeacherDashboard: React.FC = () => {
     setAttendanceSession(session);
     setAttendanceModalOpen(true);
     setLoadingRoster(true);
+    setRosterMeta(null);
     try {
-      const res = await api.get(`/attendance/session/${session.session_id}/roster`);
+      const res = await api.get(`/attendance/session/${session.session_id}/roster?simulated_time=${currentTimeStr}&target_date=${selectedDate}`);
+      setRosterMeta({
+        can_mark: res.data.can_mark,
+        is_locked: res.data.is_locked,
+        lock_reason: res.data.lock_reason,
+        teacher_name: res.data.teacher_name,
+        substitute_teacher_name: res.data.substitute_teacher_name,
+        effective_teacher_name: res.data.effective_teacher_name,
+        is_reassigned: res.data.is_reassigned,
+      });
       const mappedRoster = res.data.students.map((st: any) => ({
         student_id: st.student_id,
         user_id: st.user_id,
@@ -201,6 +255,7 @@ export const TeacherDashboard: React.FC = () => {
 
   // Toggle student attendance status
   const handleToggleStatus = (studentId: number, status: "Present" | "Absent" | "Late") => {
+    if (rosterMeta?.is_locked) return; // Prevent modification if locked
     setRoster((prev) =>
       prev.map((s) => (s.student_id === studentId ? { ...s, status } : s))
     );
@@ -208,12 +263,13 @@ export const TeacherDashboard: React.FC = () => {
 
   // Bulk mark all
   const handleBulkMark = (status: "Present" | "Absent") => {
+    if (rosterMeta?.is_locked) return; // Prevent modification if locked
     setRoster((prev) => prev.map((s) => ({ ...s, status })));
   };
 
   // Submit attendance
   const handleSaveAttendance = async () => {
-    if (!attendanceSession) return;
+    if (!attendanceSession || rosterMeta?.is_locked) return;
     setSubmittingAttendance(true);
     try {
       const payload = {
@@ -223,7 +279,7 @@ export const TeacherDashboard: React.FC = () => {
           remarks: s.remarks,
         })),
       };
-      await api.post(`/attendance/session/${attendanceSession.session_id}`, payload);
+      await api.post(`/attendance/session/${attendanceSession.session_id}?simulated_time=${currentTimeStr}&target_date=${selectedDate}`, payload);
       setFeedback({
         type: "success",
         text: `Attendance saved successfully for ${attendanceSession.subject_name} (${roster.filter((r) => r.status === "Present").length} Present, ${roster.filter((r) => r.status === "Absent").length} Absent).`,
@@ -472,19 +528,41 @@ export const TeacherDashboard: React.FC = () => {
             {/* DEDICATED CURRENTLY CONDUCTING LECTURE HERO BANNER */}
             {classes.find((c) => c.status === "Ongoing") && (() => {
               const ongoing = classes.find((c) => c.status === "Ongoing")!;
+              const canMark = ongoing.can_mark_attendance === true;
+              const isReassignedAway = ongoing.is_reassigned && !canMark && ongoing.substitute_teacher_name;
+              const isCoverage = ongoing.is_reassigned && canMark;
+
               return (
-                <div className="p-4.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/15 border-2 border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+                <div className={`p-4.5 rounded-2xl border-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs ${
+                  isReassignedAway
+                    ? "bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/15 border-amber-400"
+                    : isCoverage
+                    ? "bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-purple-500/15 border-purple-400"
+                    : "bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/15 border-emerald-500/40"
+                }`}>
                   <div className="flex items-center gap-3.5">
                     <div className="relative flex items-center justify-center">
-                      <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 animate-ping absolute" />
-                      <div className="w-3 h-3 rounded-full bg-emerald-600 relative" />
+                      <div className={`w-3.5 h-3.5 rounded-full animate-ping absolute ${
+                        isReassignedAway ? "bg-amber-500" : isCoverage ? "bg-purple-500" : "bg-emerald-500"
+                      }`} />
+                      <div className={`w-3 h-3 rounded-full relative ${
+                        isReassignedAway ? "bg-amber-600" : isCoverage ? "bg-purple-600" : "bg-emerald-600"
+                      }`} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-900 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                          Active Lecture Now
+                        <span className={`text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                          isReassignedAway
+                            ? "text-amber-900 bg-amber-100 border-amber-200"
+                            : isCoverage
+                            ? "text-purple-900 bg-purple-100 border-purple-200"
+                            : "text-emerald-900 bg-emerald-100 border-emerald-200"
+                        }`}>
+                          {isReassignedAway ? "Lecture Transferred Away" : isCoverage ? "Active Substitute Coverage" : "Active Lecture Now"}
                         </span>
-                        <span className="text-xs font-bold text-emerald-800">
+                        <span className={`text-xs font-bold ${
+                          isReassignedAway ? "text-amber-800" : isCoverage ? "text-purple-800" : "text-emerald-800"
+                        }`}>
                           {ongoing.start_time} - {ongoing.end_time}
                         </span>
                       </div>
@@ -493,16 +571,45 @@ export const TeacherDashboard: React.FC = () => {
                       </h3>
                       <p className="text-xs text-slate-600 font-medium">
                         Room: <span className="font-bold text-slate-800">{ongoing.room_code}</span> · Section: <span className="font-bold text-slate-800">{ongoing.section_name}</span>
+                        {isReassignedAway && (
+                          <span className="ml-2 text-amber-700 font-bold">
+                            · Reassigned to Prof. {ongoing.substitute_teacher_name}
+                          </span>
+                        )}
+                        {isCoverage && (
+                          <span className="ml-2 text-purple-700 font-bold">
+                            · Covering for Prof. {ongoing.teacher_name}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => openAttendanceModal(ongoing)}
-                    className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition flex items-center gap-2 cursor-pointer self-start sm:self-auto"
-                  >
-                    <CheckSquare className="w-4 h-4" />
-                    <span>Mark Class Attendance</span>
-                  </button>
+                  {isReassignedAway ? (
+                    <button
+                      disabled
+                      title={ongoing.lock_reason || "This lecture has been reassigned to another professor."}
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-sm transition flex items-center gap-2 cursor-not-allowed opacity-90 self-start sm:self-auto"
+                    >
+                      <Lock className="w-4 h-4 text-amber-700" />
+                      <span>Transferred to Prof. {ongoing.substitute_teacher_name}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => openAttendanceModal(ongoing)}
+                      disabled={!canMark}
+                      title={ongoing.lock_reason || undefined}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm transition flex items-center gap-2 self-start sm:self-auto ${
+                        canMark
+                          ? isCoverage
+                            ? "bg-purple-600 hover:bg-purple-700 cursor-pointer animate-pulse"
+                            : "bg-emerald-600 hover:bg-emerald-700 cursor-pointer animate-pulse"
+                          : "bg-slate-400 cursor-not-allowed opacity-80"
+                      }`}
+                    >
+                      {canMark ? <CheckSquare className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                      <span>{canMark ? (isCoverage ? "Mark Attendance (Coverage)" : "Mark Class Attendance") : (ongoing.lock_reason || "Attendance Locked")}</span>
+                    </button>
+                  )}
                 </div>
               );
             })()}
@@ -517,11 +624,19 @@ export const TeacherDashboard: React.FC = () => {
                   const isUpcoming = cls.status === "Upcoming";
                   const isOngoing = cls.status === "Ongoing";
                   const isCompleted = cls.status === "Completed";
+                  const canMark = cls.can_mark_attendance === true;
+                  const isReassignedAway = cls.is_reassigned && !canMark && Boolean(cls.substitute_teacher_name) && Boolean(cls.lock_reason?.includes("Reassigned"));
+                  const isCoverage = cls.is_reassigned && (canMark || cls.substitute_teacher_name?.includes("You") || (cls.effective_teacher_name && cls.effective_teacher_name !== cls.teacher_name && !isReassignedAway));
+
                   return (
                     <div
                       key={cls.session_id}
                       className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
-                        isOngoing
+                        isReassignedAway
+                          ? "border-amber-200 bg-amber-50/20"
+                          : isCoverage
+                          ? "border-purple-200 bg-purple-50/30"
+                          : isOngoing
                           ? "border-emerald-200 bg-emerald-50/30"
                           : "border-slate-100 bg-slate-50/50 hover:bg-slate-50"
                       }`}
@@ -532,63 +647,98 @@ export const TeacherDashboard: React.FC = () => {
                           <span>{cls.start_time} - {cls.end_time}</span>
                         </div>
                         <div>
-                          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                            <span>{cls.subject_name}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-bold text-slate-800">
+                              {cls.subject_name}
+                            </h3>
                             {cls.is_lab && (
                               <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
                                 LAB
                               </span>
                             )}
-                            {isOngoing && (
+                            {isReassignedAway && (
+                              <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                                Transferred to Prof. {cls.substitute_teacher_name}
+                              </span>
+                            )}
+                            {isCoverage && (
+                              <span className="text-[10px] font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-300">
+                                ⭐ Substitute Coverage (for Prof. {cls.teacher_name})
+                              </span>
+                            )}
+                            {!isReassignedAway && !isCoverage && isOngoing && (
                               <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 animate-pulse">
                                 Ongoing
                               </span>
                             )}
-                            {isCompleted && (
+                            {!isReassignedAway && !isCoverage && isCompleted && (
                               <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
                                 Completed
                               </span>
                             )}
-                            {isUpcoming && (
+                            {!isReassignedAway && !isCoverage && isUpcoming && (
                               <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                                 Upcoming
                               </span>
                             )}
-                          </h3>
-                          <p className="text-xs text-slate-500">
+                            {cls.attendance_marked && (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                ✓ Attendance Taken ({cls.attendance_count})
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">
                             Room {cls.room_code} · Section {cls.section_name}
+                            {isCoverage && (
+                              <span className="text-purple-700 font-semibold ml-2">
+                                · Regular Faculty: Prof. {cls.teacher_name}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 self-end sm:self-auto">
-                        <button
-                          onClick={() => openAttendanceModal(cls)}
-                          disabled={isUpcoming}
-                          title={isUpcoming ? `Attendance opens when class begins at ${cls.start_time}` : undefined}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                            isUpcoming
-                              ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-80"
-                              : isCompleted
-                              ? "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 cursor-pointer"
-                              : "bg-blue-600 text-white hover:bg-blue-700 shadow-xs shadow-blue-500/20 cursor-pointer animate-pulse"
-                          }`}
-                        >
-                          <CheckSquare className="w-3.5 h-3.5" />
-                          <span>
-                            {isUpcoming
-                              ? `Upcoming (${cls.start_time})`
-                              : isCompleted
-                              ? "Update Attendance"
-                              : "Mark Attendance"}
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => openTransferModal(cls)}
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Repeat className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Transfer</span>
-                        </button>
+                        {isReassignedAway ? (
+                          <button
+                            disabled
+                            title={cls.lock_reason || `Transferred to Prof. ${cls.substitute_teacher_name}. Attendance must be taken by substitute faculty.`}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 cursor-not-allowed opacity-90 flex items-center gap-1.5"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Transferred ({cls.substitute_teacher_name})</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openAttendanceModal(cls)}
+                            disabled={!canMark}
+                            title={cls.lock_reason || (isUpcoming ? `Opens at ${cls.start_time}` : undefined)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                              canMark
+                                ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs shadow-emerald-500/20 cursor-pointer animate-pulse"
+                                : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-80"
+                            }`}
+                          >
+                            {canMark ? <CheckSquare className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                            <span>
+                              {canMark
+                                ? (cls.attendance_marked ? "Update Attendance" : "Mark Attendance")
+                                : (cls.attendance_marked
+                                    ? "✓ Attendance Locked"
+                                    : isUpcoming
+                                    ? `Upcoming (${cls.start_time})`
+                                    : "Locked (Closed)")}
+                            </span>
+                          </button>
+                        )}
+                        {!isReassignedAway && !cls.attendance_marked && !isCompleted && (
+                          <button
+                            onClick={() => openTransferModal(cls)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Repeat className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Transfer</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -788,20 +938,45 @@ export const TeacherDashboard: React.FC = () => {
               </button>
             </div>
 
+            {/* Attendance Status & Lock Banners */}
+            {rosterMeta?.is_locked && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2.5">
+                <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                <div className="flex-1">
+                  <span className="font-bold">Attendance Locked: </span>
+                  <span>{rosterMeta.lock_reason || "Attendance can only be recorded on that exact date and during the scheduled time period."}</span>
+                </div>
+              </div>
+            )}
+
+            {rosterMeta?.is_reassigned && (
+              <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 text-xs flex items-center justify-between">
+                <div>
+                  <span className="font-bold">Reassigned Lecture: </span>
+                  <span>Prof. {rosterMeta.substitute_teacher_name} is the active instructor (Covering for Prof. {rosterMeta.teacher_name})</span>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-purple-200 text-purple-900 px-2.5 py-0.5 rounded-full">
+                  Substitute Faculty
+                </span>
+              </div>
+            )}
+
             {/* Quick Bulk Action Bar & Counts */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  disabled={rosterMeta?.is_locked}
                   onClick={() => handleBulkMark("Present")}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Mark All Present
                 </button>
                 <button
                   type="button"
+                  disabled={rosterMeta?.is_locked}
                   onClick={() => handleBulkMark("Absent")}
-                  className="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 font-semibold hover:bg-slate-300 transition cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 font-semibold hover:bg-slate-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Mark All Absent
                 </button>
@@ -894,12 +1069,22 @@ export const TeacherDashboard: React.FC = () => {
               </button>
               <button
                 type="button"
-                disabled={submittingAttendance || roster.length === 0}
+                disabled={submittingAttendance || roster.length === 0 || rosterMeta?.is_locked}
                 onClick={handleSaveAttendance}
-                className="px-5 py-2 rounded-xl bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-sm shadow-blue-500/20"
+                className={`px-5 py-2 rounded-xl font-semibold text-xs transition flex items-center gap-1.5 shadow-sm ${
+                  rosterMeta?.is_locked
+                    ? "bg-slate-200 text-slate-500 cursor-not-allowed opacity-80"
+                    : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/20 cursor-pointer disabled:opacity-50"
+                }`}
               >
-                <Save className="w-4 h-4" />
-                <span>{submittingAttendance ? "Saving..." : "Save Attendance"}</span>
+                {rosterMeta?.is_locked ? <Lock className="w-4 h-4 text-slate-500" /> : <Save className="w-4 h-4" />}
+                <span>
+                  {rosterMeta?.is_locked
+                    ? "Attendance Locked (Read Only)"
+                    : submittingAttendance
+                    ? "Saving..."
+                    : "Save Attendance"}
+                </span>
               </button>
             </div>
           </div>

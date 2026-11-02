@@ -38,6 +38,13 @@ class SessionRosterResponse(BaseModel):
     absent_count: int
     late_count: int
     students: List[StudentRosterItemResponse]
+    can_mark: bool = True
+    is_locked: bool = False
+    lock_reason: Optional[str] = None
+    teacher_name: Optional[str] = None
+    substitute_teacher_name: Optional[str] = None
+    effective_teacher_name: Optional[str] = None
+    is_reassigned: bool = False
 
 
 class SubjectAttendanceCardResponse(BaseModel):

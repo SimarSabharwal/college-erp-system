@@ -13,6 +13,7 @@ import {
   CheckCircle,
   AlertCircle,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 
 interface ClassSessionItem {
@@ -20,13 +21,24 @@ interface ClassSessionItem {
   section_name: string;
   subject_code: string;
   subject_name: string;
+  teacher_id?: number;
   teacher_name: string;
+  substitute_teacher_id?: number | null;
+  substitute_teacher_name?: string | null;
+  is_reassigned?: boolean;
+  reassignment_type?: string | null;
+  effective_teacher_id?: number;
+  effective_teacher_name?: string;
   room_code: string;
   start_time: string;
   end_time: string;
   status: string;
   is_lab: boolean;
   can_mark_attendance?: boolean;
+  is_attendance_locked?: boolean;
+  lock_reason?: string | null;
+  attendance_marked?: boolean;
+  attendance_count?: number;
   my_attendance_status?: "Present" | "Absent" | "Late" | null;
   my_remarks?: string | null;
 }
@@ -36,6 +48,10 @@ interface TimetableSlotItem {
   subject_code: string;
   subject_name: string;
   teacher_name: string;
+  substitute_teacher_id?: number | null;
+  substitute_teacher_name?: string | null;
+  is_reassigned?: boolean;
+  effective_teacher_name?: string;
   room_code: string;
   day_of_week: string;
   start_time: string;
@@ -488,8 +504,14 @@ export const StudentDashboard: React.FC = () => {
                     {ongoingClass.subject_name} ({ongoingClass.subject_code})
                   </h3>
                   <p className="text-xs text-slate-600 font-medium">
-                    Faculty: <span className="font-bold text-slate-800">{ongoingClass.teacher_name}</span> · Room: <span className="font-bold text-slate-800">{ongoingClass.room_code}</span>
+                    Faculty: <span className="font-bold text-slate-800">{ongoingClass.effective_teacher_name || ongoingClass.teacher_name}</span> · Room: <span className="font-bold text-slate-800">{ongoingClass.room_code}</span>
                   </p>
+                  {ongoingClass.is_reassigned && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-purple-800 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200 w-fit">
+                      <RefreshCw className="w-3 h-3 text-purple-600 animate-spin-slow" />
+                      <span>Reassigned: Prof. {ongoingClass.substitute_teacher_name} (covering for Prof. {ongoingClass.teacher_name})</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -545,16 +567,29 @@ export const StudentDashboard: React.FC = () => {
                         <span>{cls.start_time} - {cls.end_time}</span>
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
                           <span>{cls.subject_name}</span>
                           {cls.is_lab && (
                             <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
                               LAB
                             </span>
                           )}
+                          {cls.is_reassigned && (
+                            <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-300 flex items-center gap-1 shadow-2xs">
+                              <RefreshCw className="w-2.5 h-2.5 text-purple-600" />
+                              <span>Substitute Faculty</span>
+                            </span>
+                          )}
                         </h3>
-                        <p className="text-xs text-slate-500 flex items-center gap-2">
-                          <span>Room {cls.room_code} · {cls.teacher_name}</span>
+                        <p className="text-xs text-slate-500 flex items-center gap-2 flex-wrap mt-0.5">
+                          <span>
+                            Room {cls.room_code} · <strong className="text-slate-800">{cls.effective_teacher_name || cls.teacher_name}</strong>
+                          </span>
+                          {cls.is_reassigned && (
+                            <span className="text-[11px] text-purple-600 font-semibold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-100">
+                              Covering for Prof. {cls.teacher_name}
+                            </span>
+                          )}
                           {cls.my_remarks && (
                             <span className="text-[11px] text-slate-400 italic">· "{cls.my_remarks}"</span>
                           )}
@@ -672,10 +707,24 @@ export const StudentDashboard: React.FC = () => {
                         return (
                           <td key={d} className="py-3 px-3">
                             {item ? (
-                              <div className="p-2 rounded-lg bg-blue-50 border border-blue-100 space-y-1">
-                                <p className="font-bold text-blue-900">{item.subject_code}</p>
+                              <div className={`p-2 rounded-lg border space-y-1 ${item.is_reassigned ? 'bg-purple-50/80 border-purple-200 shadow-2xs' : 'bg-blue-50 border-blue-100'}`}>
+                                <div className="flex items-center justify-between gap-1">
+                                  <p className="font-bold text-blue-900">{item.subject_code}</p>
+                                  {item.is_reassigned && (
+                                    <span className="text-[9px] font-bold text-purple-700 bg-purple-100 px-1 py-0.2 rounded border border-purple-200">
+                                      Sub
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[10px] text-slate-600 truncate">{item.subject_name}</p>
-                                <p className="text-[10px] text-slate-400">{item.room_code} · {item.teacher_name}</p>
+                                <p className="text-[10px] text-slate-500">
+                                  {item.room_code} · <strong className="text-slate-700">{item.effective_teacher_name || item.teacher_name}</strong>
+                                </p>
+                                {item.is_reassigned && item.substitute_teacher_name && (
+                                  <p className="text-[9px] text-purple-700 font-medium truncate italic">
+                                    Sub: {item.substitute_teacher_name}
+                                  </p>
+                                )}
                               </div>
                             ) : (
                               <span className="text-slate-300 italic">—</span>

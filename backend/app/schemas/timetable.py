@@ -34,6 +34,10 @@ class TimetableDetailResponse(BaseModel):
     subject_name: str
     teacher_id: int
     teacher_name: str
+    substitute_teacher_id: Optional[int] = None
+    substitute_teacher_name: Optional[str] = None
+    is_reassigned: bool = False
+    effective_teacher_name: Optional[str] = None
     room_id: int
     room_code: str
     slot_id: int
@@ -76,6 +80,10 @@ class ClassSessionResponse(BaseModel):
     teacher_name: str
     substitute_teacher_id: Optional[int] = None
     substitute_teacher_name: Optional[str] = None
+    is_reassigned: bool = False
+    reassignment_type: Optional[str] = None  # 'Leave_Coverage' | 'Peer_Transfer' | None
+    effective_teacher_id: int
+    effective_teacher_name: str
     room_id: int
     room_code: str
     slot_id: int
@@ -85,6 +93,10 @@ class ClassSessionResponse(BaseModel):
     status: str
     is_lab: bool
     can_mark_attendance: bool = True
+    is_attendance_locked: bool = False
+    lock_reason: Optional[str] = None
+    attendance_marked: bool = False
+    attendance_count: int = 0
     my_attendance_status: Optional[str] = None
     my_remarks: Optional[str] = None
 
