@@ -12,6 +12,7 @@ from app.models import (
     Program,
     Section,
 )
+from app.models.scheduling import Timetable, TimetableDetail
 
 BREAK_AFTER_GLOBAL_ORDERS = {2, 6}
 
@@ -49,7 +50,7 @@ class SubstituteFinder:
             is_active_for_teacher = False
             if s.substitute_teacher_id == teacher.teacher_id:
                 is_active_for_teacher = True
-            elif s.teacher_id == teacher.teacher_id and s.status != "Transferred":
+            elif s.teacher_id == teacher.teacher_id and s.status != "Transferred" and (not s.substitute_teacher_id or s.substitute_teacher_id == teacher.teacher_id):
                 is_active_for_teacher = True
 
             if is_active_for_teacher and s.slot:
@@ -86,6 +87,105 @@ class SubstituteFinder:
             "classes_on_date": len(occupied_orders),
         }
 
+    def is_teacher_free_for_session(self, teacher_id: int, session: ClassSession) -> tuple[bool, Optional[str]]:
+        """
+        Determines whether a teacher is free to take a lecture at session.session_date and session.slot.
+        Returns:
+            (is_free: bool, busy_reason: Optional[str])
+        """
+        teacher = self.db.query(Teacher).filter_by(teacher_id=teacher_id).first()
+        if not teacher or not teacher.is_active:
+            return (False, "Teacher is inactive or not found")
+
+        # 1. Leave Check
+        on_leave = (
+            self.db.query(LeaveRequest)
+            .filter(
+                LeaveRequest.teacher_id == teacher_id,
+                LeaveRequest.status == "Approved",
+                LeaveRequest.start_date <= session.session_date,
+                LeaveRequest.end_date >= session.session_date,
+            )
+            .first()
+        )
+        if on_leave:
+            return (False, f"On approved {on_leave.leave_type} leave on this date ({session.session_date.strftime('%d %b %Y')})")
+
+        slot = session.slot
+        if not slot:
+            return (True, None)
+
+        target_start = slot.start_time
+        target_end = slot.end_time
+
+        # 2. Check active ClassSessions on session.session_date
+        day_sessions = (
+            self.db.query(ClassSession)
+            .filter(
+                ClassSession.session_date == session.session_date,
+                ClassSession.session_id != session.session_id,
+                ClassSession.status.in_(["Scheduled", "Ongoing", "Completed", "Reassigned"]),
+            )
+            .all()
+        )
+
+        for s in day_sessions:
+            is_teaching = False
+            if s.substitute_teacher_id == teacher_id:
+                is_teaching = True
+            elif s.teacher_id == teacher_id and s.status != "Transferred" and (not s.substitute_teacher_id or s.substitute_teacher_id == teacher_id):
+                is_teaching = True
+
+            if is_teaching and s.slot:
+                # Time window overlap: s.slot.start_time < target_end and s.slot.end_time > target_start
+                if s.slot.start_time < target_end and s.slot.end_time > target_start:
+                    subj_name = s.subject.name if s.subject else "Class"
+                    room_code = s.room.room_code if s.room else "Room"
+                    time_str = f"{s.slot.start_time.strftime('%H:%M')}-{s.slot.end_time.strftime('%H:%M')}"
+                    role_desc = "covering" if s.substitute_teacher_id == teacher_id else "teaching"
+                    return (False, f"Already {role_desc} {subj_name} in Room {room_code} ({time_str})")
+
+        # 3. Check active TimetableDetail for that day of week (in case not all ClassSessions were generated)
+        active_tt = (
+            self.db.query(Timetable)
+            .filter(Timetable.status == "Active")
+            .order_by(Timetable.timetable_id.desc())
+            .first()
+        )
+        if active_tt:
+            day_name = session.session_date.strftime("%a")  # "Mon", "Tue", etc.
+            details = (
+                self.db.query(TimetableDetail)
+                .join(TimeSlot, TimetableDetail.slot_id == TimeSlot.slot_id)
+                .filter(
+                    TimetableDetail.timetable_id == active_tt.timetable_id,
+                    TimetableDetail.teacher_id == teacher_id,
+                    TimeSlot.day_of_week == day_name,
+                )
+                .all()
+            )
+            for d in details:
+                if d.slot and d.slot.start_time < target_end and d.slot.end_time > target_start:
+                    # Check if transferred away for this specific session_date
+                    cs = (
+                        self.db.query(ClassSession)
+                        .filter(
+                            ClassSession.detail_id == d.detail_id,
+                            ClassSession.session_date == session.session_date,
+                        )
+                        .first()
+                    )
+                    if cs and cs.substitute_teacher_id and cs.substitute_teacher_id != teacher_id:
+                        # Transferred away, so teacher is free from this slot
+                        continue
+
+                    subj_name = d.subject.name if d.subject else "Class"
+                    room_code = d.room.room_code if d.room else "Room"
+                    time_str = f"{d.slot.start_time.strftime('%H:%M')}-{d.slot.end_time.strftime('%H:%M')}"
+                    return (False, f"Scheduled to teach {subj_name} in Room {room_code} ({time_str})")
+
+        return (True, None)
+
     def find_substitutes_for_session(self, session_id: int) -> List[Dict[str, Any]]:
         session = self.db.query(ClassSession).filter_by(session_id=session_id).first()
         if not session:
@@ -98,66 +198,42 @@ class SubstituteFinder:
         section = self.db.query(Section).filter_by(section_id=session.section_id).first()
         orig_teacher = self.db.query(Teacher).filter_by(teacher_id=session.teacher_id).first()
 
-        # Find semester_id from section or program
         semester_id = 1
         if section and section.program:
             first_sem = self.db.query(Semester).filter_by(program_id=section.program_id).first()
             if first_sem:
                 semester_id = first_sem.semester_id
 
-        # 1. Qualified teachers for this subject
-        qualified_records = (
-            self.db.query(TeacherSubject)
-            .join(Teacher, TeacherSubject.teacher_id == Teacher.teacher_id)
+        # Query all active teachers except the teacher currently holding the session
+        current_holding_id = session.substitute_teacher_id or session.teacher_id
+        all_teachers = (
+            self.db.query(Teacher)
             .filter(
-                TeacherSubject.subject_id == session.subject_id,
-                TeacherSubject.can_teach == True,
                 Teacher.is_active == True,
-                Teacher.teacher_id != session.teacher_id,
+                Teacher.teacher_id != current_holding_id,
             )
             .all()
         )
 
         candidates = []
-        for ts in qualified_records:
-            teacher = ts.teacher
+        for teacher in all_teachers:
+            # 1. Check if teacher is free at this date and time
+            is_free, busy_reason = self.is_teacher_free_for_session(teacher.teacher_id, session)
 
-            # 2. Check if on approved leave
-            on_leave = (
-                self.db.query(LeaveRequest)
-                .filter(
-                    LeaveRequest.teacher_id == teacher.teacher_id,
-                    LeaveRequest.status == "Approved",
-                    LeaveRequest.start_date <= session.session_date,
-                    LeaveRequest.end_date >= session.session_date,
+            # 2. Check if qualified for this specific subject
+            ts = (
+                self.db.query(TeacherSubject)
+                .filter_by(
+                    teacher_id=teacher.teacher_id,
+                    subject_id=session.subject_id,
+                    can_teach=True,
                 )
                 .first()
             )
-            if on_leave:
-                continue
+            is_subject_qualified = bool(ts)
+            priority = ts.priority if ts else 3
 
-            # 3. Check if already teaching another class at this slot
-            existing_session = (
-                self.db.query(ClassSession)
-                .filter(
-                    ClassSession.session_date == session.session_date,
-                    ClassSession.slot_id == session.slot_id,
-                    ClassSession.status.in_(["Scheduled", "Ongoing", "Completed", "Reassigned"]),
-                )
-                .all()
-            )
-            is_busy = False
-            for es in existing_session:
-                if es.substitute_teacher_id == teacher.teacher_id:
-                    is_busy = True
-                    break
-                if es.teacher_id == teacher.teacher_id and es.status != "Transferred":
-                    is_busy = True
-                    break
-            if is_busy:
-                continue
-
-            # 4. Check Teacher-Subject-Shift Lock (Constraint C-09)
+            # 3. Check Teacher-Subject-Shift Lock (Constraint C-09)
             lock = (
                 self.db.query(TeacherSubjectShiftLock)
                 .filter_by(
@@ -174,7 +250,7 @@ class SubstituteFinder:
                 is_shift_lock_match = False
                 shift_lock_note = "Shift-Lock notice: Faculty is designated to other shift for this subject."
 
-            # 5. Check Continuity
+            # 4. Check Continuity
             continuity_info = self.check_continuity(
                 teacher=teacher,
                 session_date=session.session_date,
@@ -190,6 +266,8 @@ class SubstituteFinder:
             warning = continuity_info["warning"]
             if shift_lock_note:
                 warning = f"{warning + ' | ' if warning else ''}{shift_lock_note}"
+            if not is_free and busy_reason:
+                warning = f"Busy: {busy_reason}"
 
             candidates.append({
                 "teacher_id": teacher.teacher_id,
@@ -205,17 +283,24 @@ class SubstituteFinder:
                 "consecutive_count": continuity_info["consecutive_count"],
                 "continuity_warning": warning,
                 "is_shift_lock_match": is_shift_lock_match,
-                "priority": ts.priority,
+                "priority": priority,
+                "is_free": is_free,
+                "busy_reason": busy_reason,
+                "is_subject_qualified": is_subject_qualified,
             })
 
         # Rank candidates:
-        # 1. Shift-lock matching first
-        # 2. Continuity safe first
-        # 3. Fewest classes today
-        # 4. Same department
-        # 5. Priority (1 = primary)
+        # 1. Free teachers first! (is_free == True)
+        # 2. Subject specialists first! (is_subject_qualified == True)
+        # 3. Shift-lock matching first!
+        # 4. Continuity safe first!
+        # 5. Fewest classes today
+        # 6. Same department
+        # 7. Priority
         candidates.sort(
             key=lambda c: (
+                0 if c["is_free"] else 1,
+                0 if c["is_subject_qualified"] else 1,
                 0 if c.get("is_shift_lock_match", True) else 1,
                 0 if c["is_continuity_safe"] else 1,
                 c["classes_today"],

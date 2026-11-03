@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 from app.core.database import get_db
@@ -671,8 +672,20 @@ def get_teacher_today_classes(
         ensure_class_sessions_for_date(db, target_date, active_tt)
 
     t_query = db.query(ClassSession).filter(
-        (ClassSession.teacher_id == teacher.teacher_id) | (ClassSession.substitute_teacher_id == teacher.teacher_id),
         ClassSession.session_date == target_date,
+        or_(
+            # 1. Transferred or assigned to this teacher as substitute
+            ClassSession.substitute_teacher_id == teacher.teacher_id,
+            # 2. Regular faculty whose lecture has NOT been transferred away to another teacher
+            and_(
+                ClassSession.teacher_id == teacher.teacher_id,
+                or_(
+                    ClassSession.substitute_teacher_id == None,
+                    ClassSession.substitute_teacher_id == teacher.teacher_id,
+                ),
+                ClassSession.status != "Transferred",
+            ),
+        ),
     )
     if active_tt:
         t_query = t_query.filter(ClassSession.timetable_id == active_tt.timetable_id)

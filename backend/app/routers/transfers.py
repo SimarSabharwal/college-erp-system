@@ -60,17 +60,19 @@ def execute_transfer(
     if not sub_teacher or not sub_teacher.is_active:
         raise HTTPException(status_code=400, detail="Substitute teacher not found or inactive")
 
-    # Run finder check on this candidate
+    # Run availability and eligibility check on substitute faculty
     finder = SubstituteFinder(db)
-    candidates = finder.find_substitutes_for_session(session.session_id)
-    candidate_match = next((c for c in candidates if c["teacher_id"] == sub_teacher.teacher_id), None)
-    if not candidate_match:
+    is_free, busy_reason = finder.is_teacher_free_for_session(sub_teacher.teacher_id, session)
+    if not is_free:
+        sub_name = sub_teacher.user.full_name if sub_teacher.user else "Selected faculty"
         raise HTTPException(
             status_code=400,
-            detail="Selected teacher is not eligible (may be on leave, already occupied at this slot, or restricted by shift-lock)"
+            detail=f"Cannot transfer lecture: Prof. {sub_name} is not free at this time ({session.slot.start_time.strftime('%H:%M') if session.slot else ''} - {session.slot.end_time.strftime('%H:%M') if session.slot else ''}). Reason: {busy_reason}."
         )
 
-    continuity_ok = candidate_match["is_continuity_safe"]
+    candidates = finder.find_substitutes_for_session(session.session_id)
+    candidate_match = next((c for c in candidates if c["teacher_id"] == sub_teacher.teacher_id), None)
+    continuity_ok = candidate_match["is_continuity_safe"] if candidate_match else True
 
     # 1. Create transfer record
     transfer = LectureTransfer(

@@ -41,6 +41,9 @@ class CandidateSubstituteResponse(BaseModel):
     consecutive_count: int
     continuity_warning: Optional[str]
     priority: int
+    is_free: bool = True
+    busy_reason: Optional[str] = None
+    is_subject_qualified: bool = True
 
 
 class ApplyLeaveRequest(BaseModel):

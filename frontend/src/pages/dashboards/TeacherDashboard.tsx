@@ -57,6 +57,9 @@ interface CandidateSubstitute {
   consecutive_count: number;
   continuity_warning?: string;
   priority: number;
+  is_free?: boolean;
+  busy_reason?: string | null;
+  is_subject_qualified?: boolean;
 }
 
 interface LeaveItem {
@@ -208,8 +211,11 @@ export const TeacherDashboard: React.FC = () => {
     try {
       const res = await api.get(`/transfers/eligible-substitutes?session_id=${session.session_id}`);
       setCandidates(res.data);
-      if (res.data.length > 0) {
-        setSelectedCandidateId(res.data[0].teacher_id);
+      const firstFree = res.data.find((c: CandidateSubstitute) => c.is_free !== false);
+      if (firstFree) {
+        setSelectedCandidateId(firstFree.teacher_id);
+      } else {
+        setSelectedCandidateId(null);
       }
     } catch (err) {
       console.error("Failed to fetch candidates", err);
@@ -300,6 +306,16 @@ export const TeacherDashboard: React.FC = () => {
   const handleTransferSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSession || !selectedCandidateId) return;
+
+    const chosenCandidate = candidates.find((c) => c.teacher_id === selectedCandidateId);
+    if (chosenCandidate && chosenCandidate.is_free === false) {
+      setFeedback({
+        type: "error",
+        text: `Cannot transfer lecture: Prof. ${chosenCandidate.full_name} is not free at this time (${chosenCandidate.busy_reason || "Scheduled for another class / on leave"}).`,
+      });
+      return;
+    }
+
     setSubmittingTransfer(true);
     setFeedback(null);
     try {
@@ -1131,44 +1147,68 @@ export const TeacherDashboard: React.FC = () => {
                     No available faculty match the slot criteria without causing a double-booking.
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    {candidates.map((cand) => (
-                      <label
-                        key={cand.teacher_id}
-                        className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                          selectedCandidateId === cand.teacher_id
-                            ? "bg-blue-50 border-blue-500 text-blue-950"
-                            : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="radio"
-                            name="substitute"
-                            checked={selectedCandidateId === cand.teacher_id}
-                            onChange={() => setSelectedCandidateId(cand.teacher_id)}
-                            className="text-blue-600"
-                          />
-                          <div>
-                            <p className="font-bold text-slate-800">{cand.full_name}</p>
-                            <p className="text-[11px] text-slate-500">
-                              {cand.designation} · {cand.department_name} ({cand.classes_today} classes today)
-                            </p>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {candidates.map((cand) => {
+                      const isFree = cand.is_free !== false;
+                      const isSelected = selectedCandidateId === cand.teacher_id;
+                      return (
+                        <label
+                          key={cand.teacher_id}
+                          className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition ${
+                            !isFree
+                              ? "bg-slate-100/70 border-slate-200 text-slate-400 cursor-not-allowed opacity-75"
+                              : isSelected
+                              ? "bg-blue-50/90 border-blue-500 text-blue-950 cursor-pointer shadow-xs"
+                              : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="radio"
+                              name="substitute"
+                              disabled={!isFree}
+                              checked={isSelected}
+                              onChange={() => isFree && setSelectedCandidateId(cand.teacher_id)}
+                              className="mt-1 text-blue-600 disabled:opacity-40"
+                            />
+                            <div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <p className="font-bold text-slate-800">{cand.full_name}</p>
+                                {cand.is_subject_qualified && (
+                                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/80 px-1.5 py-0.2 rounded border border-blue-200">
+                                    Subject Specialist
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500">
+                                {cand.designation} · {cand.department_name} ({cand.classes_today} classes today)
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          {cand.is_continuity_safe ? (
-                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                              Safe Continuity
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-                              Consecutive Warning
-                            </span>
-                          )}
-                        </div>
-                      </label>
-                    ))}
+                          <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto sm:text-right">
+                            {isFree ? (
+                              <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>Free at this time</span>
+                              </span>
+                            ) : (
+                              <span
+                                className="text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1"
+                                title={cand.busy_reason || "Faculty is already teaching at this time"}
+                              >
+                                <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                                <span>Busy: {cand.busy_reason || "Scheduled for another class / on leave"}</span>
+                              </span>
+                            )}
+                            {isFree && cand.is_continuity_safe && (
+                              <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
+                                Safe Continuity
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1194,7 +1234,11 @@ export const TeacherDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingTransfer || !selectedCandidateId}
+                  disabled={
+                    submittingTransfer ||
+                    !selectedCandidateId ||
+                    candidates.find((c) => c.teacher_id === selectedCandidateId)?.is_free === false
+                  }
                   className="px-5 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-sm shadow-blue-500/20"
                 >
                   <UserCheck className="w-4 h-4" />
